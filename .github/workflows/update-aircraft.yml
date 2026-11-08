@@ -1,0 +1,29 @@
+name: Update aircraft feed
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch adsb.fi v3 (Bartlett, 25 NM)
+        run: |
+          curl -s --max-time 25 "https://opendata.adsb.fi/api/v3/lat/35.23/lon/-89.82/dist/25" -o /tmp/adsb.json
+          python3 - <<'PYEOF'
+          import json, datetime
+          with open('/tmp/adsb.json') as f:
+              data = json.load(f)
+          data['fetched_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+          data['source'] = 'adsb.fi v3 (opendata.adsb.fi), personal family use'
+          with open('aircraft.json', 'w') as f:
+              json.dump(data, f)
+          print(f"wrote aircraft.json: {len(data.get('ac', []))} aircraft, fetched_at {data['fetched_at']}")
+          PYEOF
+      - name: Commit if changed
+        run: |
+          git add aircraft.json
+          git diff --cached --quiet || (git config user.name "ORBIT 360 feed" && git config user.email "orbit360@aubreyhayes47.github.io" && git commit -m "Update aircraft feed" && git push)
