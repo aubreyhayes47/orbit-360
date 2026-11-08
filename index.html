@@ -313,6 +313,7 @@ button{ font-family:inherit; } :focus-visible{ outline:3px solid var(--gold); ou
     <p><b style="color:#fff">5.</b> <span class="pill live">LIVE</span> means measured just now. <span class="pill calc">CALCULATED</span> means worked out from a known path.</p></div>
   <div class="card"><h3>Put Orbit on the Home Screen</h3><p>On an iPhone: open this page in <b style="color:#fff">Safari</b>, tap <b style="color:#fff">Share</b> (square with an up arrow), then <b style="color:#fff">Add to Home Screen</b>. Orbit then opens full-screen from its own icon, like an app — no account or login, ever.</p><p>On Android: open in Chrome, tap ⋮, then <b style="color:#fff">Add to Home screen</b>.</p></div>
   <div class="card"><h3>About the information</h3><p>Space facts checked against NASA/JPL, November 7, 2026. Weather live from the National Weather Service. Station position live from orbital data. Airplane positions live from adsb.fi's open feed, read first from a cached copy on this same site (aircraft.json) because the feed does not answer browsers directly — that cached-feed pattern is what most small personal trackers use. Orbit shows the feed's name, its time, and how old it is on every report, and never shows an old report as live. Weather is from the National Weather Service first, with Open-Meteo as a labelled backup. No location is tracked — Local Sky always looks at Bartlett.</p></div>
+  <p class="small" style="margin-top:14px">ORBIT 360 v10</p>
 </section>
 
 <div class="footer"><div class="rule"></div>ORBIT 360 — made with care for two very good grandparents.<br/>Open it, see what's overhead, look up.</div>
@@ -439,7 +440,7 @@ function fs(n){ return Math.round(n*__fs); }
 function altColor(alt){ var t=Math.max(0,Math.min(1,(alt||0)/40000)); var r=Math.round(47+(255-47)*t), g=Math.round(111+(243-111)*t), b=Math.round(180+(196-180)*t); return "rgb("+r+","+g+","+b+")"; }
 function destPoint(lat,lon,brgDeg,distMi){ var d=distMi/3958.8, p=Math.PI/180, la=lat*p, lo=lon*p, br=brgDeg*p; var la2=Math.asin(Math.sin(la)*Math.cos(d)+Math.cos(la)*Math.sin(d)*Math.cos(br)); var lo2=lo+Math.atan2(Math.sin(br)*Math.sin(d)*Math.cos(la),Math.cos(d)-Math.sin(la)*Math.sin(la2)); return {lat:la2/p, lon:lo2/p}; }
 function skyChartSVG(planes,radiusMi,highlight){
-  var S=340,C=S/2,R=S/2-26,out="", gid="skyg"+(++__gidc);
+  var S=340,C=S/2,R=S/2-34,out="", gid="skyg"+(++__gidc);
   var stops=SKY_THEME==="overcast"?["#3d546e","#26374c","#1b2c42"]:(SKY_THEME==="dusk"?["#7a4b3a","#3c3358","#101f3d"]:["#10386e","#0a2247","#081a33"]);
   var ageMin=lastFeedMeta?(Date.now()-lastFeedMeta.when.getTime())/60000:0;
   var fade=(1-0.7*Math.min(1,Math.max(0,ageMin)/10)).toFixed(2);
@@ -448,15 +449,18 @@ function skyChartSVG(planes,radiusMi,highlight){
   out+='<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="'+stops[0]+'"/><stop offset=".55" stop-color="'+stops[1]+'"/><stop offset="1" stop-color="'+stops[2]+'"/></linearGradient></defs>';
   out+='<circle cx="'+C+'" cy="'+C+'" r="'+R+'" fill="url(#'+gid+')" stroke="rgba(150,190,240,.45)" stroke-width="1.5"/>';
   var rings=radiusMi>=50?[10,25,50]:[Math.round(radiusMi/3),Math.round(radiusMi*2/3),radiusMi];
-  rings.forEach(function(rm){ var f=rm/radiusMi; out+='<circle cx="'+C+'" cy="'+C+'" r="'+(R*f)+'" fill="none" stroke="rgba(150,190,240,.3)"/><text x="'+(C+5)+'" y="'+(C-R*f+fs(14))+'" fill="#a8d4f5" font-size="'+fs(13)+'" font-weight="700">'+rm+' mi</text>'; });
+  rings.forEach(function(rm){ var f=rm/radiusMi; out+='<circle cx="'+C+'" cy="'+C+'" r="'+(R*f)+'" fill="none" stroke="rgba(150,190,240,.3)"/><text x="'+(C+5)+'" y="'+(C-R*f+fs(24))+'" fill="#a8d4f5" font-size="'+fs(13)+'" font-weight="700">'+rm+' mi</text>'; });
   out+='<text x="'+C+'" y="'+fs(19)+'" fill="#eec25e" font-size="'+fs(19)+'" font-weight="700" text-anchor="middle">N</text>';
   out+='<text x="'+C+'" y="'+(S-4)+'" fill="#dceeff" font-size="'+fs(15)+'" font-weight="700" text-anchor="middle">S</text><text x="8" y="'+(C+5)+'" fill="#dceeff" font-size="'+fs(15)+'" font-weight="700">W</text><text x="'+(S-22)+'" y="'+(C+5)+'" fill="#dceeff" font-size="'+fs(15)+'" font-weight="700">E</text>';
   out+='<text x="'+C+'" y="'+(C+8)+'" fill="#eec25e" font-size="'+fs(24)+'" text-anchor="middle">★</text>';
-  planes.forEach(function(a,i){ var la=(a._ilat!=null?a._ilat:a.lat), lo=(a._ilon!=null?a._ilon:a.lon); var brg=bearing(HOME.lat,HOME.lon,la,lo); var br=brg*Math.PI/180; var fr=Math.min(1,(a._mi||0)/radiusMi); var x=C+Math.sin(br)*R*fr, y=C-Math.cos(br)*R*fr; var hl=(highlight!=null&&i===highlight);
-    /* labels NEVER use the gliding position's bearing above (that bearing only places the
-       dot while it glides between fixes, and drifts as the plane moves): every word and
-       number a reader sees — data-* for the tap card and the <title> — is the stored
-       a._mi / a._brg / a._dir from renderPlanes, identical to the list and the caption. */
+  planes.forEach(function(a,i){ var brg=(a._brg!=null?a._brg:bearing(HOME.lat,HOME.lon,a.lat,a.lon)); var br=brg*Math.PI/180; var fr=Math.min(1,(a._mi||0)/radiusMi); var x=C+Math.sin(br)*R*fr, y=C-Math.cos(br)*R*fr; var hl=(highlight!=null&&i===highlight);
+    /* the dot is placed from the SAME stored values as every label — a._brg and a._mi,
+       set once by renderPlanes — never from a gliding/dead-reckoned position and never
+       from the plane's heading/track. (v9 placed dots from dead-reckoned positions
+       extrapolated along each plane's track, so a dot could sit in the southwest while
+       its own label, the list and the caption all said northwest.) Every word and
+       number a reader sees — data-* for the tap card and the <title> — is likewise the
+       stored a._mi / a._brg / a._dir, identical to the list and the caption. */
     var lblMi=(a._mi!=null?a._mi:0), lblBrg=(a._brg!=null?Math.round(a._brg):0), lblDir=(a._dir||"—");
     var col=altColor(a.alt_baro==="ground"?0:a.alt_baro); var tk=(a.track!=null&&!isNaN(a.track))?a.track:null;
     var altTxt=a.alt_baro==="ground"||a.alt_baro===0?"On the ground":(a.alt_baro?Number(a.alt_baro).toLocaleString("en-US")+" feet":"Altitude not reported");
@@ -549,7 +553,7 @@ function renderGreeting(){ var h=chiParts(new Date()).h; var g=h<5?"Good night":
   $("greetLine").textContent=g+" — "+d+" in Bartlett"; }
 renderGreeting();
 /* ===== briefing (built from live state) ===== */
-var state={planes:null,planesWhen:null,iss:null,wxTonight:null,verdict:null,alertNames:null,wxFailed:false};
+var state={planes:null,planesWhen:null,iss:null,wxTonight:null,wxBackup:null,verdict:null,alertNames:null,wxFailed:false};
 function updateBriefing(){ var parts=["Here is your Orbit 360 briefing for Bartlett."];
   var R=(typeof skyRadiusMi!=="undefined"&&skyRadiusMi)?skyRadiusMi:25;
   var tr=(typeof track!=="undefined")?track:null;
@@ -560,6 +564,7 @@ function updateBriefing(){ var parts=["Here is your Orbit 360 briefing for Bartl
   if(state.alertNames&&state.alertNames.length)parts.push("Important: "+state.alertNames.join(" and ")+" in effect for Bartlett. Follow the official guidance in the alert at the top of the home page.");
   if(state.verdict)parts.push(state.verdict);
   if(state.wxTonight)parts.push("Tonight's forecast: "+state.wxTonight);
+  else if(state.wxBackup)parts.push("Weather right now, from the backup forecast: "+state.wxBackup);
   else if(state.wxFailed)parts.push("The weather forecast didn't answer, so there is no tonight verdict in this briefing — tap Refresh Everything to try again.");
   parts.push("Today's story is "+(window.__storySpeak||"")+" "+milestoneSentence());
   var hb=$("homeBrief"); if(hb)hb.setAttribute("data-speak",parts.join(" ")); }
@@ -665,7 +670,7 @@ var tonightClear=null;
 var WMO={0:"Clear sky",1:"Mainly clear",2:"Partly cloudy",3:"Overcast",45:"Fog",48:"Fog",51:"Light drizzle",53:"Drizzle",55:"Drizzle",56:"Freezing drizzle",57:"Freezing drizzle",61:"Light rain",63:"Rain",65:"Heavy rain",66:"Freezing rain",67:"Freezing rain",71:"Light snow",73:"Snow",75:"Heavy snow",77:"Snow grains",80:"Light showers",81:"Showers",82:"Heavy showers",85:"Snow showers",86:"Snow showers",95:"Thunderstorm",96:"Thunderstorm with hail",99:"Thunderstorm with hail"};
 function wxFail(msg){
   /* clear or stamp everything the weather feed owns — nothing stale stays up as if live */
-  state.wxTonight=null; state.wxTemp=null; state.verdict=null; state.wxFailed=true; tonightClear=null;
+  state.wxTonight=null; state.wxBackup=null; state.wxTemp=null; state.verdict=null; state.wxFailed=true; tonightClear=null;
   setTrack("wx","fail"); setFresh("freshWx","🌦 Weather: didn't answer — tap REFRESH");
   var dot=$("wxDot"),st=$("wxStatus"); if(dot){dot.className="dot err"; st.textContent=msg;}
   var wn=$("wxNow"); if(wn)wn.innerHTML="";
@@ -744,10 +749,22 @@ function fetchWxFallback(my,why){
     var windDir=compass(cur.wind_direction_10m), precip=(d.daily.precipitation_probability_max&&d.daily.precipitation_probability_max[0])||0;
     state.wxTemp=temp; state.wxFailed=false; var wb2=$("homeWxBig"); if(wb2)wb2.textContent=temp; var wl2=$("homeWxLabel"); if(wl2)wl2.textContent=txt.toUpperCase()+" — RIGHT NOW";
     setTrack("wx","ok"); setFresh("freshWx","🌦 Weather: backup (Open-Meteo) "+nowTime());
-    state.wxTonight=txt.toLowerCase()+", "+temp+" degrees (backup forecast)."; updateBriefing(); updateHomeStatus();
+    state.wxTonight=null; state.wxBackup=txt.toLowerCase()+", "+temp+" degrees (backup forecast, right now)."; updateBriefing(); updateHomeStatus();
     $("homeWxLine").innerHTML="Bartlett now (backup forecast): <b style='color:#fff'>"+temp+"°F · "+esc(txt)+"</b> — the Weather Service didn't answer, so this is Open-Meteo.";
-    wxTonightVerdict(txt,temp,precip,{fromCurrent:true,windMph:Math.round(cur.wind_speed_10m)});
-    var td=$("tonightDetail"); if(td)td.textContent="Tonight's verdict is from the backup forecast (Open-Meteo) because the National Weather Service didn't answer — and the backup only reports conditions right now, so the verdict is plainly labelled “based on right now, not tonight”. For seeing the Space Station, the Station page explains when a pass is visible from Bartlett.";
+    /* NO Tonight verdict is built from the backup. The verdict is built ONCE, only by
+       wxTonightVerdict inside the NWS success path — the same fetch that fills the
+       weather card. The backup reports conditions right now, and right now is not
+       tonight (a clear afternoon can become a foggy night): a verdict rendered from it
+       sat on the panel until a later Weather Service answer silently replaced it with
+       the opposite answer — the v9 flip. Until the Weather Service answers, the Tonight
+       panel says plainly that there is no verdict yet; if a verdict was already built
+       from the Weather Service earlier, it is left exactly as it was. */
+    if(!state.verdict){
+      var tvF=$("tonightVerdict"); if(tvF)tvF.textContent="🌙 No verdict for tonight yet — the Weather Service didn't answer, and the backup forecast only reports right now, not tonight. Tap UPDATE WEATHER to try the Weather Service again.";
+      var htF=$("homeTonight"); if(htF)htF.textContent="No verdict yet";
+      var htsF=$("homeTonightSub"); if(htsF)htsF.textContent="Right now (backup): "+txt+", "+temp+"°F";
+    }
+    var td=$("tonightDetail"); if(td)td.textContent="No verdict is shown for tonight: the National Weather Service didn't answer, and the backup forecast (Open-Meteo) only reports conditions right now — right now is not tonight, so this page won't guess. For seeing the Space Station, the Station page explains when a pass is visible from Bartlett.";
     var dot=$("wxDot"),st=$("wxStatus"); if(dot){ dot.className="dot wait"; st.textContent="Backup forecast — Open-Meteo, shown because the National Weather Service didn't answer ("+why+"). Updated "+nowTime()+". Weather alerts cannot be checked from the backup — see weather.gov if storms are expected."; }
     /* the alerts box belongs to fetchAlerts alone — the backup forecast neither fills it nor clears it */
     var wn=$("wxNow"); if(wn)wn.innerHTML='<div class="wxnow">'+wxIconSVG(txt,true)+'<div><div class="bignum">'+temp+'°F</div><p style="font-size:1.2rem;margin:2px 0"><b>'+esc(txt)+'</b> — right now (backup)</p></div></div><div class="facts"><div class="fact"><span class="fl">Wind</span><span class="fv">'+Math.round(cur.wind_speed_10m)+" mph "+esc(windDir)+'</span></div><div class="fact"><span class="fl">Humidity</span><span class="fv">'+cur.relative_humidity_2m+'%</span></div><div class="fact"><span class="fl">Today</span><span class="fv">High '+Math.round(d.daily.temperature_2m_max[0])+'°F · Low '+Math.round(d.daily.temperature_2m_min[0])+'°F</span></div><div class="fact"><span class="fl">Chance of rain today</span><span class="fv">'+precip+'%</span></div></div>';
@@ -802,7 +819,7 @@ function fetchWeather(){
     var tonightCand=periods.filter(function(pp){return !pp.isDaytime;})[0]||null;
     var tonight=first;
     if(tonightCand&&tonightCand.startTime){ var tst=new Date(tonightCand.startTime); var dayDiff=isNaN(tst.getTime())?99:Math.abs(chiDayNum(tst)-chiDayNum(new Date())); if(dayDiff<=1)tonight=tonightCand; }
-    state.wxTonight=tonight.shortForecast.toLowerCase()+", "+tonight.temperature+" degrees. "+tonight.detailedForecast; state.wxFailed=false; updateBriefing();
+    state.wxTonight=tonight.shortForecast.toLowerCase()+", "+tonight.temperature+" degrees. "+tonight.detailedForecast; state.wxBackup=null; state.wxFailed=false; updateBriefing();
     state.wxTemp=tonight.temperature; var wb=$("homeWxBig"); if(wb)wb.textContent=tonight.temperature; var wl=$("homeWxLabel"); if(wl)wl.textContent=(tonight.shortForecast||"Tonight").toUpperCase()+" TONIGHT";
     setTrack("wx","ok"); setFresh("freshWx","🌦 Weather: NWS updated "+nowTime());
     $("homeWxLine").innerHTML="Bartlett now: <b style='color:#fff'>"+first.temperature+"°"+first.temperatureUnit+" · "+esc(first.shortForecast)+"</b> — tap Weather below for the full forecast.";
@@ -857,19 +874,28 @@ function renderPlanes(ac,when){
   return shown;
 }
 function skySuccess(d,meta){
-  var ac=(d.ac||d.aircraft||[]).filter(function(a){return a.lat!=null&&a.lon!=null;});
+  var raw=(d.ac||d.aircraft||[]).filter(function(a){return a.lat!=null&&a.lon!=null;});
+  var feedTotal=raw.length; /* every aircraft the feed reported, near or far */
   var when=meta.when||new Date();
   setTrack("planes","ok");
-  setFresh("freshPlanes","✈ Planes: "+ac.length+" · feed "+fmtClock(when)+" ("+meta.short+")");
+  /* render FIRST: renderPlanes filters to the chosen radius, stores each plane's one
+     distance/direction, and sets state.planes + the big heading to the IN-RANGE count.
+     Every count below — the status line here, the pill (via state.planes), the big
+     heading — is that same in-range count. The feed total appears only as a clearly
+     labelled secondary note. (v9's status line printed the raw feed total here, so it
+     disagreed with the pill and the heading whenever a plane was out of range.) */
+  var shown=renderPlanes(raw,when);
+  var inRange=state.planes||0;
+  updateHomeStatus();
+  setFresh("freshPlanes","✈ Planes: "+inRange+" within "+skyRadiusMi+" mi · feed "+fmtClock(when)+" ("+meta.short+")");
   setFeedMeta(meta.sourceLabel,"Feed time: "+fmtClock(when)+" — "+fmtAgo(when),meta.modeLabel,meta.modeClass);
   var dot=$("skyDot"),st=$("skyStatusText"); if(dot)dot.className="dot";
-  if(!ac.length){ var fh=chiParts(new Date()).h; var fedexNote=fh<5?"The FedEx rush is winding down in these small hours; the next one builds late tonight.":(fh<11?"The overnight FedEx rush has ended; the next one builds late tonight.":(fh<17?"The FedEx rush builds late tonight, so the sky usually gets busier after dark.":(fh<22?"The FedEx rush builds later tonight, so check again after dark.":"The FedEx rush should be building right about now — check again in a few minutes."))); if(st)st.textContent="The feed answered ("+meta.sourceLabel+") — but no aircraft are broadcasting within "+skyRadiusMi+" miles right now ("+fmtClock(when)+"). Try a wider distance, or check again soon. "+fedexNote; $("skyList").innerHTML=""; renderPlanes([],when); $("skyReadbar").setAttribute("data-speak","The live sky feed is working, but no aircraft are broadcasting within this distance of Bartlett right now. Try the wider distance, or check again in a little while. "+fedexNote); return; }
-  var shown=renderPlanes(ac,when);
+  if(!inRange){ var fh=chiParts(new Date()).h; var fedexNote=fh<5?"The FedEx rush is winding down in these small hours; the next one builds late tonight.":(fh<11?"The overnight FedEx rush has ended; the next one builds late tonight.":(fh<17?"The FedEx rush builds late tonight, so the sky usually gets busier after dark.":(fh<22?"The FedEx rush builds later tonight, so check again after dark.":"The FedEx rush should be building right about now — check again in a few minutes."))); if(st)st.textContent="The feed answered ("+meta.sourceLabel+") — but no aircraft are broadcasting within "+skyRadiusMi+" miles right now ("+fmtClock(when)+")."+(feedTotal?" The feed listed "+feedTotal+" aircraft in total, all farther away.":"")+" Try a wider distance, or check again soon. "+fedexNote; $("skyList").innerHTML=""; $("skyReadbar").setAttribute("data-speak","The live sky feed is working, but no aircraft are broadcasting within this distance of Bartlett right now. Try the wider distance, or check again in a little while. "+fedexNote); return; }
   var ageNote=meta.ageMin>=5?" Feed is "+Math.round(meta.ageMin)+" minutes old — planes move about 30 miles in 5 minutes at cruising speed, so positions have shifted since this snapshot.":"";
-  if(st)st.textContent=ac.length+" aircraft in the feed — showing the "+shown.length+" nearest and most interesting within "+skyRadiusMi+" miles. Feed time "+when.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",second:"2-digit",timeZone:"America/Chicago"})+" ("+fmtAgo(when)+") · "+meta.sourceLabel+"."+ageNote;
+  if(st)st.textContent=inRange+" planes within "+skyRadiusMi+" miles of Bartlett — showing the "+shown.length+" nearest and most interesting. The feed listed "+feedTotal+" aircraft in total. Feed time "+when.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",second:"2-digit",timeZone:"America/Chicago"})+" ("+fmtAgo(when)+") · "+meta.sourceLabel+"."+ageNote;
   $("skyList").innerHTML=shown.map(function(a,i){ var call=(a.flight||"").trim()||"Private flight"; var alt=a.alt_baro==="ground"||a.alt_baro===0?"On the ground":(a.alt_baro?Number(a.alt_baro).toLocaleString("en-US")+" feet":"Altitude not reported"); var spd=a.gs?Math.round(a.gs*1.15078)+" mph":"—"; var hdg=(a.track!=null&&!isNaN(a.track))?Math.round(a.track)+"° "+compass(a.track):"—"; var reg=a.r?" · Registration "+esc(a.r):""; var star=a._rare?'<span class="pill calc">★ WORTH A LOOK</span>':'<span class="pill live">LIVE FEED</span>';
     return '<div class="card sky-list-card'+(a._rare?" rare":"")+'"><div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><span class="call">'+(i+1)+'. '+esc(call)+'</span>'+star+'</div><p style="margin-top:4px"><b style="color:#fff">'+esc(typeNameOf(a))+'</b>'+reg+'</p><div class="lookline">👀 LOOK: '+fmtMi(a._mi)+' '+a._dir+' — face '+a._dir+' · bearing '+Math.round(a._brg)+'°</div><div class="facts"><div class="fact"><span class="fl">Distance</span><span class="fv">'+fmtMi(a._mi)+'</span></div><div class="fact"><span class="fl">Height</span><span class="fv">'+alt+'</span></div><div class="fact"><span class="fl">Speed</span><span class="fv">'+spd+'</span></div><div class="fact"><span class="fl">Flying toward</span><span class="fv">'+hdg+'</span></div></div></div>'; }).join("");
-  var speak="Local sky report for Bartlett, from "+meta.sourceLabel+" at "+fmtClock(when)+". There are "+ac.length+" aircraft in the feed nearby. ";
+  var speak="Local sky report for Bartlett, from "+meta.sourceLabel+" at "+fmtClock(when)+". There are "+inRange+" aircraft within "+skyRadiusMi+" miles of Bartlett (the feed listed "+feedTotal+" in total). ";
   shown.slice(0,3).forEach(function(a,i){ speak+=(i===0?"Nearest and most notable: ":"Also nearby: ")+((a.flight||"").trim()||"a private flight")+", a "+typeNameOf(a)+", "+fmtMi(a._mi)+" "+a._dir+" of Bartlett"+(a.alt_baro&&a.alt_baro!=="ground"?", at "+Number(a.alt_baro).toLocaleString("en-US")+" feet":"")+". "; });
   speak+="Some aircraft — especially military and privacy-blocked ones — never appear on this feed.";
   $("skyReadbar").setAttribute("data-speak",speak);
@@ -982,29 +1008,13 @@ function buildNightLine(){
   ev.sort(function(a,b){return a.t-b.t;});
   el.innerHTML=ev.map(function(e){ return '<div class="nl-row'+(e.nowrow?" nowrow":"")+'"><span class="nd '+e.cls+'"></span><span class="nl-time">'+e.time+'</span><span class="nl-label">'+e.label+'</span></div>'; }).join("");
 }
-/* ===== smooth motion: planes glide between polls from their last fix + speed/track ===== */
+/* ===== reduced motion =====
+   There is deliberately NO dead-reckoning/gliding of plane dots: a glided position is
+   extrapolated along the plane's track, so a chart drawn from it states the heading's
+   direction, not the plane's direction from Bartlett — the v9 chart/list disagreement.
+   Dots are drawn from the stored feed values and move when the 90-second poll (below)
+   brings a newer feed. */
 var REDUCED=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-function interpPlanes(){
-  if(!lastFeedMeta||!lastPlanes.length)return;
-  var elSec=Math.min(180,(Date.now()-lastFeedMeta.when.getTime())/1000); if(elSec<0)elSec=0;
-  lastPlanes.forEach(function(a){
-    if(a.gs&&a.track!=null&&!isNaN(a.track)&&a.alt_baro!=="ground"){ var d=destPoint(a.lat,a.lon,a.track,a.gs*1.15078*(elSec/3600)); a._ilat=d.lat; a._ilon=d.lon; }
-    else { a._ilat=a.lat; a._ilon=a.lon; }
-  });
-}
-var lastFrameRender=0;
-function animLoop(ts){
-  if(!REDUCED){
-    if(ts-lastFrameRender>700){ lastFrameRender=ts;
-      if(lastPlanes.length&&( $("view-home").classList.contains("active")||$("view-local").classList.contains("active") )){
-        interpPlanes();
-        if($("view-home").classList.contains("active")){ var hc=$("homeSkyChart"); if(hc)hc.innerHTML=skyChartSVG(lastPlanes.slice(0,25),skyRadiusMi,null); }
-        if($("view-local").classList.contains("active")){ var sc=$("skyChart"); if(sc)sc.innerHTML=skyChartSVG(lastShown,skyRadiusMi,null); }
-      }
-    }
-    requestAnimationFrame(animLoop);
-  }
-}
 /* ===== tap a plane on a chart -> one big detail card, one clear way back ===== */
 document.addEventListener("click",function(e){
   var back=e.target.closest(".pd-back");
@@ -1029,7 +1039,11 @@ updFs(); updateHomeStatus(); buildNightLine();
 $("homeSkyChart").innerHTML=skyChartSVG([],skyRadiusMi,null);
 tickVoyager(); setInterval(tickVoyager,1000);
 fetchISS(); fetchWeather(); fetchSky();
-if(!REDUCED)requestAnimationFrame(animLoop);
+/* planes poll: re-fetch aircraft.json every 90 seconds while the page sits open, so the
+   chart, the caption, the list and the counts all move with the planes instead of freezing
+   at first load (the v9 page fetched once and never again). fetchSky bumps gen.planes on
+   every call, so a slow or out-of-order reply can never overwrite a newer one. */
+setInterval(fetchSky,90000);
 /* station poll: every 60 seconds while Home or the Station view is showing — the Updated
    stamp is printed with seconds and the coordinates genuinely move on that cadence */
 setInterval(function(){ if($("view-home").classList.contains("active")||$("view-sats").classList.contains("active"))fetchISS(); },60000);
