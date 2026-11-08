@@ -343,6 +343,10 @@ var INTERESTING={C17:1,C5M:1,KC35:1,KC46:1,B52:1,C130:1,F16:1,F15:1,F18:1,F22:1,
 var HOME={lat:35.23,lon:-89.82};
 function $(id){return document.getElementById(id);}
 function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;");}
+/* THE compass for the whole page — the only place a bearing becomes a direction word.
+   Centered 8-point sectors: each word is centered on its point (north = 337.5°–22.5°),
+   so 348° and 343° are "north" and 167° is "south". Nothing else may derive a direction
+   word; plane labels read the stored a._dir that renderPlanes sets from this function. */
 function compass(deg){if(deg==null||isNaN(deg))return"—";var d=["north","northeast","east","southeast","south","southwest","west","northwest"];return d[Math.round(((deg%360)+360)%360/45)%8];}
 var TZ="America/Chicago"; /* every clock & calendar on this page speaks Memphis time, whatever the device's own zone */
 function chiParts(d){ var p={}; new Intl.DateTimeFormat("en-US",{timeZone:TZ,hourCycle:"h23",year:"numeric",month:"numeric",day:"numeric",hour:"numeric",minute:"numeric"}).formatToParts(d).forEach(function(x){p[x.type]=x.value;}); return {y:+p.year,mo:+p.month,d:+p.day,h:(+p.hour)%24,mi:+p.minute}; }
@@ -439,7 +443,7 @@ function skyChartSVG(planes,radiusMi,highlight){
   var stops=SKY_THEME==="overcast"?["#3d546e","#26374c","#1b2c42"]:(SKY_THEME==="dusk"?["#7a4b3a","#3c3358","#101f3d"]:["#10386e","#0a2247","#081a33"]);
   var ageMin=lastFeedMeta?(Date.now()-lastFeedMeta.when.getTime())/60000:0;
   var fade=(1-0.7*Math.min(1,Math.max(0,ageMin)/10)).toFixed(2);
-  var nearI=-1,nearD=1e9; planes.forEach(function(a,i){ var dd=(a._mi!=null?a._mi:havMi(HOME.lat,HOME.lon,a.lat,a.lon)); if(dd<nearD){nearD=dd;nearI=i;} });
+  var nearI=-1,nearD=1e9; planes.forEach(function(a,i){ var dd=(a._mi!=null?a._mi:1e9); if(dd<nearD){nearD=dd;nearI=i;} });
   out+='<svg viewBox="0 0 '+S+' '+S+'" role="img" aria-label="Sky chart: plane positions around Bartlett">';
   out+='<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="'+stops[0]+'"/><stop offset=".55" stop-color="'+stops[1]+'"/><stop offset="1" stop-color="'+stops[2]+'"/></linearGradient></defs>';
   out+='<circle cx="'+C+'" cy="'+C+'" r="'+R+'" fill="url(#'+gid+')" stroke="rgba(150,190,240,.45)" stroke-width="1.5"/>';
@@ -448,15 +452,20 @@ function skyChartSVG(planes,radiusMi,highlight){
   out+='<text x="'+C+'" y="'+fs(19)+'" fill="#eec25e" font-size="'+fs(19)+'" font-weight="700" text-anchor="middle">N</text>';
   out+='<text x="'+C+'" y="'+(S-4)+'" fill="#dceeff" font-size="'+fs(15)+'" font-weight="700" text-anchor="middle">S</text><text x="8" y="'+(C+5)+'" fill="#dceeff" font-size="'+fs(15)+'" font-weight="700">W</text><text x="'+(S-22)+'" y="'+(C+5)+'" fill="#dceeff" font-size="'+fs(15)+'" font-weight="700">E</text>';
   out+='<text x="'+C+'" y="'+(C+8)+'" fill="#eec25e" font-size="'+fs(24)+'" text-anchor="middle">★</text>';
-  planes.forEach(function(a,i){ var la=(a._ilat!=null?a._ilat:a.lat), lo=(a._ilon!=null?a._ilon:a.lon); var brg=bearing(HOME.lat,HOME.lon,la,lo); var br=brg*Math.PI/180; var fr=Math.min(1,(a._mi||havMi(HOME.lat,HOME.lon,la,lo))/radiusMi); var x=C+Math.sin(br)*R*fr, y=C-Math.cos(br)*R*fr; var hl=(highlight!=null&&i===highlight);
+  planes.forEach(function(a,i){ var la=(a._ilat!=null?a._ilat:a.lat), lo=(a._ilon!=null?a._ilon:a.lon); var brg=bearing(HOME.lat,HOME.lon,la,lo); var br=brg*Math.PI/180; var fr=Math.min(1,(a._mi||0)/radiusMi); var x=C+Math.sin(br)*R*fr, y=C-Math.cos(br)*R*fr; var hl=(highlight!=null&&i===highlight);
+    /* labels NEVER use the gliding position's bearing above (that bearing only places the
+       dot while it glides between fixes, and drifts as the plane moves): every word and
+       number a reader sees — data-* for the tap card and the <title> — is the stored
+       a._mi / a._brg / a._dir from renderPlanes, identical to the list and the caption. */
+    var lblMi=(a._mi!=null?a._mi:0), lblBrg=(a._brg!=null?Math.round(a._brg):0), lblDir=(a._dir||"—");
     var col=altColor(a.alt_baro==="ground"?0:a.alt_baro); var tk=(a.track!=null&&!isNaN(a.track))?a.track:null;
     var altTxt=a.alt_baro==="ground"||a.alt_baro===0?"On the ground":(a.alt_baro?Number(a.alt_baro).toLocaleString("en-US")+" feet":"Altitude not reported");
     var spdTxt=a.gs?Math.round(a.gs*1.15078)+" mph":"—";
-    out+='<g class="planetap" opacity="'+fade+'" data-call="'+esc((a.flight||"").trim()||"Private flight")+'" data-type="'+esc(typeNameOf(a))+'" data-dist="'+(a._mi||0).toFixed(1)+'" data-brg="'+Math.round(brg)+'" data-compass="'+compass(brg)+'" data-alt="'+esc(altTxt)+'" data-spd="'+esc(spdTxt)+'">';
+    out+='<g class="planetap" opacity="'+fade+'" data-call="'+esc((a.flight||"").trim()||"Private flight")+'" data-type="'+esc(typeNameOf(a))+'" data-dist="'+lblMi.toFixed(1)+'" data-brg="'+lblBrg+'" data-compass="'+lblDir+'" data-alt="'+esc(altTxt)+'" data-spd="'+esc(spdTxt)+'">';
     if(tk!=null){ var tr=tk*Math.PI/180; for(var k=3;k>=1;k--){ var x1=x-Math.sin(tr)*k*7, y1=y+Math.cos(tr)*k*7, x2=x-Math.sin(tr)*(k+1)*7, y2=y+Math.cos(tr)*(k+1)*7; out+='<line x1="'+x1.toFixed(1)+'" y1="'+y1.toFixed(1)+'" x2="'+x2.toFixed(1)+'" y2="'+y2.toFixed(1)+'" stroke="'+col+'" stroke-width="3" stroke-linecap="round" opacity="'+(0.38-0.11*k+0.11)+'"/>'; } }
     if(i===nearI) out+='<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="16" fill="none" stroke="#eec25e" stroke-width="2.5"/>';
-    if(tk!=null){ out+='<polygon points="0,-11 7.5,9 0,4.5 -7.5,9" transform="translate('+x.toFixed(1)+' '+y.toFixed(1)+') rotate('+tk+')" fill="'+col+'" stroke="'+(a._rare?"#ff9d8a":"#071426")+'" stroke-width="'+(a._rare?2.5:1.5)+'"><title>'+esc((a.flight||"Plane")+" — "+fmtMi(a._mi||0)+" "+compass(brg))+'</title></polygon>'; }
-    else { out+='<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="'+(hl?9:6.5)+'" fill="'+col+'" stroke="#071426" stroke-width="2"><title>'+esc((a.flight||"Plane")+" — "+fmtMi(a._mi||0)+" "+compass(brg))+'</title></circle>'; }
+    if(tk!=null){ out+='<polygon points="0,-11 7.5,9 0,4.5 -7.5,9" transform="translate('+x.toFixed(1)+' '+y.toFixed(1)+') rotate('+tk+')" fill="'+col+'" stroke="'+(a._rare?"#ff9d8a":"#071426")+'" stroke-width="'+(a._rare?2.5:1.5)+'"><title>'+esc((a.flight||"Plane")+" — "+fmtMi(lblMi)+" "+lblDir)+'</title></polygon>'; }
+    else { out+='<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="'+(hl?9:6.5)+'" fill="'+col+'" stroke="#071426" stroke-width="2"><title>'+esc((a.flight||"Plane")+" — "+fmtMi(lblMi)+" "+lblDir)+'</title></circle>'; }
     out+='</g>'; });
   if(!planes.length) out+='<text x="'+C+'" y="'+(C+38)+'" fill="#dceeff" font-size="'+fs(14)+'" text-anchor="middle">No planes to plot right now</text>';
   out+="</svg>"; return out;
@@ -830,13 +839,18 @@ function setFeedMeta(source,ageTxt,mode,modeClass){
   if(s1)s1.textContent="Source: "+source; if(s2)s2.textContent=ageTxt; if(s3){s3.textContent=mode; s3.className="fm "+(modeClass||"");}
 }
 function renderPlanes(ac,when){
-  ac.forEach(function(a){ a._mi=(a.dst!=null&&!isNaN(a.dst))?a.dst*1.15078:havMi(HOME.lat,HOME.lon,a.lat,a.lon); a._calcMi=havMi(HOME.lat,HOME.lon,a.lat,a.lon); a._rare=INTERESTING[a.t]?1:0; a._brg=bearing(HOME.lat,HOME.lon,a.lat,a.lon); });
+  /* ONE distance and ONE direction per plane, computed here and nowhere else:
+     a._mi is the feed distance (or the position distance when the feed gives none),
+     rounded ONCE to one decimal; a._dir is compass(a._brg). The sky chart, the Home
+     nearest-plane caption and the list (LOOK line + Distance line) all read these
+     stored values — none of them recomputes or re-rounds a distance or a bearing. */
+  ac.forEach(function(a){ var rawMi=(a.dst!=null&&!isNaN(a.dst))?a.dst*1.15078:havMi(HOME.lat,HOME.lon,a.lat,a.lon); a._mi=Math.round(rawMi*10)/10; a._brg=bearing(HOME.lat,HOME.lon,a.lat,a.lon); a._dir=compass(a._brg); a._rare=INTERESTING[a.t]?1:0; });
   ac=ac.filter(function(a){return a._mi<=skyRadiusMi;});
   ac.sort(function(x,y){return (y._rare-x._rare)||(x._mi-y._mi);});
   lastPlanes=ac; var shown=ac.slice(0,15); lastShown=shown;
   var sc=$("skyChart"); if(sc)sc.innerHTML=skyChartSVG(shown,skyRadiusMi,null);
   var hc=$("homeSkyChart"); if(hc)hc.innerHTML=skyChartSVG(ac.slice(0,25),skyRadiusMi,null);
-  var nc=$("nearestCap"); if(nc){ if(ac.length){ var na=ac[0]; ac.forEach(function(a){ if(a._mi<na._mi)na=a; }); nc.textContent="NEAREST: "+(((na.flight||"").trim())||"Private flight")+" — "+fmtMi(na._mi)+" "+compass(na._brg)+" — bearing "+Math.round(na._brg)+"° — look "+compass(na._brg)+"."; } else nc.textContent="Nearest plane: none broadcasting within "+skyRadiusMi+" miles right now."; }
+  var nc=$("nearestCap"); if(nc){ if(ac.length){ var na=ac[0]; ac.forEach(function(a){ if(a._mi<na._mi)na=a; }); nc.textContent="NEAREST: "+(((na.flight||"").trim())||"Private flight")+" — "+fmtMi(na._mi)+" "+na._dir+" — bearing "+Math.round(na._brg)+"° — look "+na._dir+"."; } else nc.textContent="Nearest plane: none broadcasting within "+skyRadiusMi+" miles right now."; }
   var pc=$("homePlaneCount"); if(pc)pc.textContent=ac.length;
   var ps=$("homePlaneSub"); if(ps)ps.textContent="within "+skyRadiusMi+" miles · feed "+fmtClock(when);
   state.planes=ac.length; updateBriefing();
@@ -854,9 +868,9 @@ function skySuccess(d,meta){
   var ageNote=meta.ageMin>=5?" Feed is "+Math.round(meta.ageMin)+" minutes old — planes move about 30 miles in 5 minutes at cruising speed, so positions have shifted since this snapshot.":"";
   if(st)st.textContent=ac.length+" aircraft in the feed — showing the "+shown.length+" nearest and most interesting within "+skyRadiusMi+" miles. Feed time "+when.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",second:"2-digit",timeZone:"America/Chicago"})+" ("+fmtAgo(when)+") · "+meta.sourceLabel+"."+ageNote;
   $("skyList").innerHTML=shown.map(function(a,i){ var call=(a.flight||"").trim()||"Private flight"; var alt=a.alt_baro==="ground"||a.alt_baro===0?"On the ground":(a.alt_baro?Number(a.alt_baro).toLocaleString("en-US")+" feet":"Altitude not reported"); var spd=a.gs?Math.round(a.gs*1.15078)+" mph":"—"; var hdg=(a.track!=null&&!isNaN(a.track))?Math.round(a.track)+"° "+compass(a.track):"—"; var reg=a.r?" · Registration "+esc(a.r):""; var star=a._rare?'<span class="pill calc">★ WORTH A LOOK</span>':'<span class="pill live">LIVE FEED</span>';
-    return '<div class="card sky-list-card'+(a._rare?" rare":"")+'"><div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><span class="call">'+(i+1)+'. '+esc(call)+'</span>'+star+'</div><p style="margin-top:4px"><b style="color:#fff">'+esc(typeNameOf(a))+'</b>'+reg+'</p><div class="lookline">👀 LOOK: '+fmtMi(a._mi)+' '+compass(a._brg)+' — face '+compass(a._brg)+' · bearing '+Math.round(a._brg)+'°</div><div class="facts"><div class="fact"><span class="fl">Distance (checked from its position)</span><span class="fv">'+a._calcMi.toFixed(1)+' miles</span></div><div class="fact"><span class="fl">Height</span><span class="fv">'+alt+'</span></div><div class="fact"><span class="fl">Speed</span><span class="fv">'+spd+'</span></div><div class="fact"><span class="fl">Flying toward</span><span class="fv">'+hdg+'</span></div></div></div>'; }).join("");
+    return '<div class="card sky-list-card'+(a._rare?" rare":"")+'"><div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><span class="call">'+(i+1)+'. '+esc(call)+'</span>'+star+'</div><p style="margin-top:4px"><b style="color:#fff">'+esc(typeNameOf(a))+'</b>'+reg+'</p><div class="lookline">👀 LOOK: '+fmtMi(a._mi)+' '+a._dir+' — face '+a._dir+' · bearing '+Math.round(a._brg)+'°</div><div class="facts"><div class="fact"><span class="fl">Distance</span><span class="fv">'+fmtMi(a._mi)+'</span></div><div class="fact"><span class="fl">Height</span><span class="fv">'+alt+'</span></div><div class="fact"><span class="fl">Speed</span><span class="fv">'+spd+'</span></div><div class="fact"><span class="fl">Flying toward</span><span class="fv">'+hdg+'</span></div></div></div>'; }).join("");
   var speak="Local sky report for Bartlett, from "+meta.sourceLabel+" at "+fmtClock(when)+". There are "+ac.length+" aircraft in the feed nearby. ";
-  shown.slice(0,3).forEach(function(a,i){ speak+=(i===0?"Nearest and most notable: ":"Also nearby: ")+((a.flight||"").trim()||"a private flight")+", a "+typeNameOf(a)+", "+a._mi.toFixed(0)+" miles "+compass(a._brg)+" of Bartlett"+(a.alt_baro&&a.alt_baro!=="ground"?", at "+Number(a.alt_baro).toLocaleString("en-US")+" feet":"")+". "; });
+  shown.slice(0,3).forEach(function(a,i){ speak+=(i===0?"Nearest and most notable: ":"Also nearby: ")+((a.flight||"").trim()||"a private flight")+", a "+typeNameOf(a)+", "+fmtMi(a._mi)+" "+a._dir+" of Bartlett"+(a.alt_baro&&a.alt_baro!=="ground"?", at "+Number(a.alt_baro).toLocaleString("en-US")+" feet":"")+". "; });
   speak+="Some aircraft — especially military and privacy-blocked ones — never appear on this feed.";
   $("skyReadbar").setAttribute("data-speak",speak);
 }
