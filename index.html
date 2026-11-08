@@ -314,7 +314,7 @@ button{ font-family:inherit; } :focus-visible{ outline:3px solid var(--gold); ou
     <p>5. LIVE means measured just now. CALCULATED means worked out from a known path.</p></div>
   <div class="card"><h3>Put Orbit on the Home Screen</h3><p>On an iPhone: open this page in Safari, tap Share (square with an up arrow), then Add to Home Screen. Orbit then opens full-screen from its own icon, like an app — no account or login, ever.</p><p>On Android: open in Chrome, tap ⋮, then Add to Home screen.</p></div>
   <div class="card"><h3>About the information</h3><p>Space facts checked against NASA/JPL, November 7, 2026. Weather live from the National Weather Service. Station position live from orbital data. Airplane positions live from adsb.fi's open feed, read first from a cached copy on this same site (aircraft.json) because the feed does not answer browsers directly — that cached-feed pattern is what most small personal trackers use. Orbit shows the feed's name, its time, and how old it is on every report, and never shows an old report as live. Weather is from the National Weather Service first, with Open-Meteo as a labelled backup. No location is tracked — Local Sky always looks at Bartlett.</p></div>
-  <p class="small" style="margin-top:14px">ORBIT 360 v24</p>
+  <p class="small" style="margin-top:14px">ORBIT 360 v25</p>
 </section>
 
 <div class="footer"><div class="rule"></div>ORBIT 360 — made with care for two very good grandparents.<br/>Open it, see what's overhead, look up.</div>
@@ -488,8 +488,9 @@ function skyChartSVG(planes,radiusMi,highlight){
      behind its own "8 mi" ring chip. So now neither side can cover the
      other — a label never hides a plane, and (the v13–v16 rule, unchanged)
      no plane ever paints over a label, because chips still draw last and
-     still land only where no marker sits. If every spot is taken on a very
-     crowded chart, a chip falls back to its usual spot, as v18 behaved. */
+     still land only where no marker sits. v25: if every spot is taken on a
+     very crowded chart, the chip is DROPPED, never painted over anything
+     (the v19–v24 usual-spot fallback is deleted — see placeChip). */
   function chipGeom(x,y,txt,fpx,anchor){
     var w=Math.ceil(txt.length*fpx*0.64)+18, h=fpx+11;
     var x0=anchor==="middle"?Math.round(x-w/2):(anchor==="end"?Math.round(x-w+9):Math.round(x-9));
@@ -501,6 +502,14 @@ function skyChartSVG(planes,radiusMi,highlight){
   var placed=[];
   var obstacles=[{x:C,y:C,r:19}];
   pos.forEach(function(p,i){ obstacles.push({x:p.x,y:p.y,r:(i===nearI?22:16)}); });
+  /* v25: TRAILS are obstacles too. A plane's trail runs up to 28 units
+     behind its arrow (segments at 7–28 units, stroke 3) — the old r16
+     marker circle left the outer half of every trail unprotected, so a
+     chip could sit clear of the arrow yet hide the trail behind it.
+     Sampled points along each trail (r5, past the trail's end) join the
+     obstacle list, so chipFree now keeps every chip clear of the whole
+     trail corridor, not just the arrow. */
+  planes.forEach(function(a,i){ var tk=(a.track!=null&&!isNaN(a.track))?a.track:null; if(tk==null)return; var tr=tk*Math.PI/180; [17,20.5,24,27.5].forEach(function(d){ obstacles.push({x:pos[i].x-Math.sin(tr)*d,y:pos[i].y+Math.cos(tr)*d,r:5}); }); });
   function chipFree(g){
     var i,b,dx,dy;
     for(i=0;i<placed.length;i++){ b=placed[i]; if(g.x0-3<b.x0+b.w&&b.x0-3<g.x0+g.w&&g.y0-3<b.y0+b.h&&b.y0-3<g.y0+g.h) return false; }
@@ -508,10 +517,16 @@ function skyChartSVG(planes,radiusMi,highlight){
     return true;
   }
   function placeChip(cands,txt,fpx,fill){
-    var g=null,i,t;
-    for(i=0;i<cands.length;i++){ t=chipGeom(cands[i][0],cands[i][1],txt,fpx,cands[i][2]); if(chipFree(t)){ g=t; break; } if(!g)g=t; }
-    placed.push(g);
-    return '<rect x="'+g.x0+'" y="'+g.y0+'" width="'+g.w+'" height="'+g.h+'" rx="6" fill="#081a33" stroke="rgba(150,190,240,.4)" stroke-width="1"/><text x="'+g.tx+'" y="'+g.ty+'" fill="'+fill+'" font-size="'+fpx+'" font-weight="700"'+(g.anchor==="middle"?' text-anchor="middle"':(g.anchor==="end"?' text-anchor="end"':""))+'>'+txt+'</text>';
+    var i,t;
+    for(i=0;i<cands.length;i++){ t=chipGeom(cands[i][0],cands[i][1],txt,fpx,cands[i][2]); if(chipFree(t)){ placed.push(t); return '<rect x="'+t.x0+'" y="'+t.y0+'" width="'+t.w+'" height="'+t.h+'" rx="6" fill="#081a33" stroke="rgba(150,190,240,.4)" stroke-width="1"/><text x="'+t.tx+'" y="'+t.ty+'" fill="'+fill+'" font-size="'+fpx+'" font-weight="700"'+(t.anchor==="middle"?' text-anchor="middle"':(t.anchor==="end"?' text-anchor="end"':""))+'>'+txt+'</text>'; } }
+    /* v25: NO fallback paint-over. The v19–v24 placeChip fell back to the
+       chip's usual spot when every candidate was taken, painting it over
+       whatever sat there — another chip, a marker, a trail. That fallback
+       is deleted: a chip with no clear spot is DROPPED (returns ""), so
+       the guarantee — no chip ever overlaps another chip, and no chip
+       ever covers a marker, arrow, trail or the home star — holds in
+       code in every case, not just in uncrowded practice. */
+    return "";
   }
   var labels="";
   /* v24: the NEAREST plane gets a VISIBLE label on the chart itself. Up to
@@ -548,37 +563,75 @@ function skyChartSVG(planes,radiusMi,highlight){
        no reservation: they carry fifty-odd alternates each). */
     var nRes24=[{x0:C-22,y0:0,w:44,h:44},{x0:C-20,y0:S-42,w:40,h:42},{x0:0,y0:C-20,w:38,h:40},{x0:S-38,y0:C-20,w:38,h:40}];
     function nFree24(g){ if(!chipFree(g))return false; for(var ri=0;ri<nRes24.length;ri++){ var b=nRes24[ri]; if(g.x0-3<b.x0+b.w&&b.x0-3<g.x0+g.w&&g.y0-3<b.y0+b.h&&b.y0-3<g.y0+g.h) return false; } return true; }
+    function nDraw1(g){ placed.push(g); return '<rect x="'+g.x0+'" y="'+g.y0+'" width="'+g.w+'" height="'+g.h+'" rx="6" fill="#081a33" stroke="rgba(238,194,94,.65)" stroke-width="1.2"/><text x="'+g.tx+'" y="'+g.ty+'" fill="#eec25e" font-size="'+nfpx24+'" font-weight="700"'+(g.anchor==="middle"?' text-anchor="middle"':(g.anchor==="end"?' text-anchor="end"':""))+'>'+nTxt24+'</text>'; }
     for(ni24=0;ni24<nCands24.length;ni24++){ ng24=chipGeom(nCands24[ni24][0],nCands24[ni24][1],nTxt24,nfpx24,nCands24[ni24][2]); if(nFree24(ng24)){ placed.push(ng24); labels+='<rect x="'+ng24.x0+'" y="'+ng24.y0+'" width="'+ng24.w+'" height="'+ng24.h+'" rx="6" fill="#081a33" stroke="rgba(238,194,94,.65)" stroke-width="1.2"/><text x="'+ng24.tx+'" y="'+ng24.ty+'" fill="#eec25e" font-size="'+nfpx24+'" font-weight="700"'+(ng24.anchor==="middle"?' text-anchor="middle"':(ng24.anchor==="end"?' text-anchor="end"':""))+'>'+nTxt24+'</text>'; nDone24=true; break; } }
+    if(!nDone24){
+      /* v25: before giving up on the single line, scan a fine grid over
+         the WHOLE chart at full clearance (star, every marker at full
+         radius, every trail, compass reservations). The v24 tier 1 tried
+         only its 16 named spots, so a clear band elsewhere on the chart
+         went unused and crowded charts fell through to smaller forms —
+         or, in the old last resort, to a paint-over. */
+      var gw24=Math.ceil(nTxt24.length*nfpx24*0.64)+18, gh24=nfpx24+11;
+      for(var gy24=1;gy24+gh24<=S-1&&!nDone24;gy24+=7)for(var gx24=1;gx24+gw24<=S-1&&!nDone24;gx24+=7){ var tg24={x0:gx24,y0:gy24,w:gw24,h:gh24,tx:gx24+gw24/2,ty:gy24+nfpx24+4,anchor:"middle"}; if(nFree24(tg24)){ labels+=nDraw1(tg24); nDone24=true; } }
+    }
     if(!nDone24){
       /* crowded chart (a dozen-plus planes can leave no full-width band
          free): fall back to the same words on TWO lines — "NEAREST" over
          the distance/direction — in a narrower chip of the same system,
          tried around the nearest plane first, then on a fine grid across
-         the whole chart. It uses the same chipFree checks, so it still
-         clears the star and every marker; only if even the grid finds no
-         spot does the single-line chip take its usual spot, as v19 chips
-         behaved on impossible charts. */
+         the whole chart. It uses the same chipFree checks at FULL
+         clearance, so it still clears the star, every marker and every
+         trail; if even that finds no spot, smaller tiers below try
+         harder — and if all of them fail the chip is dropped, never
+         painted over anything (v25). */
       var line2_24=nMi24.toFixed(1)+" mi "+nAbbr24;
       var f2=fs(18), w2=Math.ceil(Math.max(7,line2_24.length)*f2*0.64)+18, h2=2*f2+15, g2=null;
       var ctr2=[[np24.x+64,np24.y],[np24.x-64,np24.y],[np24.x,np24.y-56],[np24.x,np24.y+56],[np24.x+60,np24.y-50],[np24.x-60,np24.y-50],[np24.x+60,np24.y+50],[np24.x-60,np24.y+50],[62,62],[C,60],[S-62,62],[62,C],[S-62,C],[62,S-60],[C,S-60],[S-62,S-60],[C,96],[C,S-96],[96,120],[S-96,120],[96,228],[S-96,228],[C,132],[C,214]];
-      for(var gy2=40;gy2<=S-40;gy2+=17)for(var gx2=40;gx2<=S-40;gx2+=17)ctr2.push([gx2,gy2]);
+      for(var gy2=40;gy2<=S-40;gy2+=8)for(var gx2=40;gx2<=S-40;gx2+=8)ctr2.push([gx2,gy2]);
       for(ni24=0;ni24<ctr2.length;ni24++){ var cx2=Math.max(1,Math.min(S-1-w2,Math.round(ctr2[ni24][0]-w2/2))), cy2=Math.max(1,Math.min(S-1-h2,Math.round(ctr2[ni24][1]-h2/2))); var t2={x0:cx2,y0:cy2,w:w2,h:h2}; if(nFree24(t2)){ g2=t2; break; } }
       if(!g2){
-        /* tier 3, for the most packed charts (a dozen planes in XL with the
-           nearest dead centre can leave no fs(18) window): the same two
-           lines at fs(16), with the clearance around ORDINARY markers
-           relaxed 16 → 12 units — an arrow glyph is 11 units, so every
-           arrow itself still clears; only a faint trail's first steps may
-           pass under the chip's edge. The star, the nearest plane's 22 and
-           the compass reservations are NOT relaxed. */
+        /* tier 3 (v25 REWRITTEN): the same two lines at fs(16) — searched
+           at FULL clearance. The v24 tier 3 relaxed ordinary marker
+           clearance 16 → 12 and admitted a trail might pass under the
+           chip; that relaxation is deleted. This tier now differs from
+           tier 2 only in size: the smaller chip is walked over the same
+           candidate list with nFree24 — star, every marker at its full
+           16/22 radius, every trail obstacle and the compass
+           reservations all still apply. */
         var f3=fs(16), w3=Math.ceil(Math.max(7,line2_24.length)*f3*0.64)+18, h3=2*f3+15;
-        var obs3=obstacles.map(function(o,oi){ return {x:o.x,y:o.y,r:(oi===0||oi===nearI+1)?o.r:Math.max(12,o.r-4)}; });
-        function free3(g){ var i,b,dx,dy; for(i=0;i<nRes24.length;i++){ b=nRes24[i]; if(g.x0-3<b.x0+b.w&&b.x0-3<g.x0+g.w&&g.y0-3<b.y0+b.h&&b.y0-3<g.y0+g.h) return false; } for(i=0;i<obs3.length;i++){ b=obs3[i]; dx=Math.max(g.x0-b.x,0,b.x-(g.x0+g.w)); dy=Math.max(g.y0-b.y,0,b.y-(g.y0+g.h)); if(dx*dx+dy*dy<b.r*b.r) return false; } return true; }
-        for(ni24=0;ni24<ctr2.length;ni24++){ var cx3=Math.max(1,Math.min(S-1-w3,Math.round(ctr2[ni24][0]-w3/2))), cy3=Math.max(1,Math.min(S-1-h3,Math.round(ctr2[ni24][1]-h3/2))); var t3={x0:cx3,y0:cy3,w:w3,h:h3}; if(free3(t3)){ g2=t3; f2=f3; break; } }
+        for(ni24=0;ni24<ctr2.length;ni24++){ var cx3=Math.max(1,Math.min(S-1-w3,Math.round(ctr2[ni24][0]-w3/2))), cy3=Math.max(1,Math.min(S-1-h3,Math.round(ctr2[ni24][1]-h3/2))); var t3={x0:cx3,y0:cy3,w:w3,h:h3}; if(nFree24(t3)){ g2=t3; f2=f3; break; } }
+      }
+      if(!g2){
+        /* tier 4 (v25): the fs(16) two-line chip WITHOUT the compass
+           reservations. Those reservations only protected the compass
+           chips' usual spots from this chip — and since v25 the compass
+           chips drop rather than paint over, a NEAREST chip landing on a
+           reserved spot costs at most a dropped compass letter, never an
+           overlap. Star, markers and trails still clear at FULL radius
+           (chipFree, unrelaxed). */
+        for(ni24=0;ni24<ctr2.length;ni24++){ var cx4=Math.max(1,Math.min(S-1-w3,Math.round(ctr2[ni24][0]-w3/2))), cy4=Math.max(1,Math.min(S-1-h3,Math.round(ctr2[ni24][1]-h3/2))); var t4={x0:cx4,y0:cy4,w:w3,h:h3}; if(chipFree(t4)){ g2=t4; f2=f3; break; } }
       }
       if(g2){ placed.push(g2); labels+='<rect x="'+g2.x0+'" y="'+g2.y0+'" width="'+g2.w+'" height="'+g2.h+'" rx="6" fill="#081a33" stroke="rgba(238,194,94,.65)" stroke-width="1.2"/><text x="'+(g2.x0+g2.w/2)+'" y="'+(g2.y0+f2+3)+'" fill="#eec25e" font-size="'+f2+'" font-weight="700" text-anchor="middle">NEAREST</text><text x="'+(g2.x0+g2.w/2)+'" y="'+(g2.y0+2*f2+6)+'" fill="#eec25e" font-size="'+f2+'" font-weight="700" text-anchor="middle">'+line2_24+'</text>'; nDone24=true; }
     }
-    if(!nDone24) labels+=placeChip([nCands24[0]],nTxt24,nfpx24,"#eec25e");
+    if(!nDone24){
+      /* tier 5 (v25): a COMPACT three-line form — "NEAREST" / the distance
+         / the direction, one per line — whose width is set by the longest
+         single line instead of the whole distance-and-direction string,
+         so it fits narrow vertical slots the two-line chip cannot. Same
+         fs(16), same full clearance (chipFree, no reservations). */
+      var dOnly24=nMi24.toFixed(1)+" mi";
+      var f5=fs(16), w5=Math.ceil(Math.max(7,dOnly24.length)*f5*0.64)+18, h5=3*f5+18, g5=null;
+      for(ni24=0;ni24<ctr2.length;ni24++){ var cx5=Math.max(1,Math.min(S-1-w5,Math.round(ctr2[ni24][0]-w5/2))), cy5=Math.max(1,Math.min(S-1-h5,Math.round(ctr2[ni24][1]-h5/2))); var t5={x0:cx5,y0:cy5,w:w5,h:h5}; if(chipFree(t5)){ g5=t5; break; } }
+      if(g5){ placed.push(g5); labels+='<rect x="'+g5.x0+'" y="'+g5.y0+'" width="'+g5.w+'" height="'+g5.h+'" rx="6" fill="#081a33" stroke="rgba(238,194,94,.65)" stroke-width="1.2"/><text x="'+(g5.x0+g5.w/2)+'" y="'+(g5.y0+f5+3)+'" fill="#eec25e" font-size="'+f5+'" font-weight="700" text-anchor="middle">NEAREST</text><text x="'+(g5.x0+g5.w/2)+'" y="'+(g5.y0+2*f5+6)+'" fill="#eec25e" font-size="'+f5+'" font-weight="700" text-anchor="middle">'+dOnly24+'</text><text x="'+(g5.x0+g5.w/2)+'" y="'+(g5.y0+3*f5+9)+'" fill="#eec25e" font-size="'+f5+'" font-weight="700" text-anchor="middle">'+nAbbr24+'</text>'; nDone24=true; }
+    }
+    /* v25: NO last-resort paint-over — the v19–v24 code ended this block
+       by painting the single-line chip at its usual spot regardless of
+       crowding. That line is deleted. If every tier above failed, the
+       NEAREST chip is DROPPED: never drawn over another chip, a marker,
+       an arrow, a trail or the star. The caption under the chart still
+       names the nearest plane in words. (The randomised sweep must show
+       this never happens for realistic 1–8-plane traffic.) */
   }
   var smallRings=rings.filter(function(rm){ return R*(rm/radiusMi)<62; });
   var smallSeen=0;
