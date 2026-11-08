@@ -314,7 +314,7 @@ button{ font-family:inherit; } :focus-visible{ outline:3px solid var(--gold); ou
     <p>5. LIVE means measured just now. CALCULATED means worked out from a known path.</p></div>
   <div class="card"><h3>Put Orbit on the Home Screen</h3><p>On an iPhone: open this page in Safari, tap Share (square with an up arrow), then Add to Home Screen. Orbit then opens full-screen from its own icon, like an app — no account or login, ever.</p><p>On Android: open in Chrome, tap ⋮, then Add to Home screen.</p></div>
   <div class="card"><h3>About the information</h3><p>Space facts checked against NASA/JPL, November 7, 2026. Weather live from the National Weather Service. Station position live from orbital data. Airplane positions live from adsb.fi's open feed, read first from a cached copy on this same site (aircraft.json) because the feed does not answer browsers directly — that cached-feed pattern is what most small personal trackers use. Orbit shows the feed's name, its time, and how old it is on every report, and never shows an old report as live. Weather is from the National Weather Service first, with Open-Meteo as a labelled backup. No location is tracked — Local Sky always looks at Bartlett.</p></div>
-  <p class="small" style="margin-top:14px">ORBIT 360 v22</p>
+  <p class="small" style="margin-top:14px">ORBIT 360 v23</p>
 </section>
 
 <div class="footer"><div class="rule"></div>ORBIT 360 — made with care for two very good grandparents.<br/>Open it, see what's overhead, look up.</div>
@@ -598,7 +598,7 @@ function issMapSVG(lat,lon,arc){
   for(var gx=0;gx<=360;gx+=60)out+='<line x1="'+(gx/360*W)+'" y1="0" x2="'+(gx/360*W)+'" y2="'+H+'" stroke="rgba(150,190,240,.14)"/>';
   for(var gy=0;gy<=180;gy+=30)out+='<line x1="0" y1="'+(gy/180*H)+'" x2="'+W+'" y2="'+(gy/180*H)+'" stroke="rgba(150,190,240,.14)"/>';
   var blocks=[[-168,66,-52,15],[-80,10,-35,-55],[-10,36,32,70],[-18,-35,52,32],[45,5,180,75],[68,-12,142,22],[113,-39,154,-11]];
-  blocks.forEach(function(b){var x1=X(b[0]),x2=X(b[2]),y1=Y(b[3]),y2=Y(b[1]);out+='<rect x="'+x1+'" y="'+y1+'" width="'+(x2-x1)+'" height="'+(y2-y1)+'" fill="rgba(126,180,120,.20)" rx="10"/>';});
+  blocks.forEach(function(b){var x1=X(b[0]),x2=X(b[2]),y1=Y(b[3]),y2=Y(b[1]);out+='<rect x="'+x1+'" y="'+y1+'" width="'+(x2-x1)+'" height="'+(y2-y1)+'" fill="rgba(110,190,125,.52)" stroke="rgba(195,240,205,.95)" stroke-width="2" rx="10"/>';});
   /* day/night terminator: shade the night side, dashed line on the boundary */
   var sp=sunPoint(), p=Math.PI/180, sla=sp.lat*p, slo=sp.lon*p;
   var S=[Math.cos(sla)*Math.cos(slo),Math.cos(sla)*Math.sin(slo),Math.sin(sla)];
@@ -1295,14 +1295,23 @@ function dayRolloverCheck(){
 setInterval(dayRolloverCheck,60000);
 document.addEventListener("visibilitychange",function(){ if(!document.hidden)dayRolloverCheck(); });
 window.addEventListener("focus",dayRolloverCheck);
-/* ===== YOU ARE HERE marker (v17): the Tonight line is re-drawn every minute so the
-   marker's clock time — and its sorted place in the list — track the real time while
-   the page sits open. Before this, buildNightLine ran only at first load, on a weather
-   refresh and at midnight rollover, so the marker froze at the load-time clock (a
-   6-minute idle probe saw it still reading the load minute while the aircraft feed
-   and weather updated around it). buildNightLine also runs on every weather refresh
-   (above), entering and leaving the 5 PM–7 AM window included. ===== */
-setInterval(buildNightLine,60000);
+/* ===== YOU ARE HERE marker (v17, aligned v23): the Tonight line is re-drawn
+   every minute so the marker's clock time — and its sorted place in the list —
+   track the real time while the page sits open. Before v17, buildNightLine ran
+   only at first load, on a weather refresh and at midnight rollover, so the
+   marker froze at the load-time clock. v23 fixes the remaining lag: a plain
+   60-second interval counts from page load, so it could fire up to a minute
+   after the clock's minute changed (the v22 probe caught 10:31 on the clock
+   with the marker still reading 10:30). The refresh is now aligned to the
+   wall-clock minute boundary — a self-rescheduling timeout fires just after
+   the top of each minute, so the marker always shows the current minute.
+   buildNightLine also runs on every weather refresh (above), entering and
+   leaving the 5 PM–7 AM window included. ===== */
+function scheduleNightLine(){
+  var msToNext=60000-(Date.now()%60000)+80;
+  setTimeout(function(){ buildNightLine(); scheduleNightLine(); },msToNext);
+}
+scheduleNightLine();
 </script>
 </body>
 </html>
