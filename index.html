@@ -204,7 +204,7 @@ button{ font-family:inherit; } :focus-visible{ outline:3px solid var(--gold); ou
 <section class="view" id="view-local" aria-label="Local Sky">
   <p class="kicker">Tracker · Local Sky</p><h1 class="page">Planes Over Bartlett — Live</h1>
   <p class="lede">Each dot on the chart is a real plane. Its place on the chart matches its direction and distance from home, so you can look up and check.</p>
-  <div class="verifybox"><h3>✓ How to verify this with your own eyes</h3><ol><li>Find plane #1 in the list below — it is the nearest or most interesting.</li><li>Read its big gold line. <span id="verifyLookLine">Once the live list below loads, plane #1's own gold line will be copied here word for word — the same live distance and the same live direction, from the same stored values — so you can check it without scrolling. Until then this step shows no distance and no direction, on purpose: a made-up example here could send you looking the wrong way.</span></li><li>Step outside, face that compass direction, and look up at about the height given. A high plane leaves a white trail on a clear day; a low one you may hear first.</li><li>Check the feed time below. If it says the feed is several minutes old, the plane has moved on — tap REFRESH.</li></ol></div>
+  <div class="verifybox"><h3>✓ How to verify this with your own eyes</h3><ol><li>Find plane #1 in the list below — it is the nearest plane.</li><li>Read its big gold line. <span id="verifyLookLine">Once the live list below loads, plane #1's own gold line will be copied here word for word — the same live distance and the same live direction, from the same stored values — so you can check it without scrolling. Until then this step shows no distance and no direction, on purpose: a made-up example here could send you looking the wrong way.</span></li><li>Step outside, face that compass direction, and look up at about the height given. A high plane leaves a white trail on a clear day; a low one you may hear first.</li><li>Check the feed time below. If it says the feed is several minutes old, the plane has moved on — tap REFRESH.</li></ol></div>
   <div class="card" style="margin-top:14px"><h3>How far out should we look?</h3>
     <div class="seg" id="radiusSeg" role="group" aria-label="Search radius">
       <button type="button" data-mi="10">10 miles</button><button type="button" data-mi="25" class="sel">25 miles</button><button type="button" data-mi="50">50 miles</button><button type="button" data-mi="100">100 miles</button>
@@ -314,7 +314,7 @@ button{ font-family:inherit; } :focus-visible{ outline:3px solid var(--gold); ou
     <p>5. LIVE means measured just now. CALCULATED means worked out from a known path.</p></div>
   <div class="card"><h3>Put Orbit on the Home Screen</h3><p>On an iPhone: open this page in Safari, tap Share (square with an up arrow), then Add to Home Screen. Orbit then opens full-screen from its own icon, like an app — no account or login, ever.</p><p>On Android: open in Chrome, tap ⋮, then Add to Home screen.</p></div>
   <div class="card"><h3>About the information</h3><p>Space facts checked against NASA/JPL, November 7, 2026. Weather live from the National Weather Service. Station position live from orbital data. Airplane positions live from adsb.fi's open feed, read first from a cached copy on this same site (aircraft.json) because the feed does not answer browsers directly — that cached-feed pattern is what most small personal trackers use. Orbit shows the feed's name, its time, and how old it is on every report, and never shows an old report as live. Weather is from the National Weather Service first, with Open-Meteo as a labelled backup. No location is tracked — Local Sky always looks at Bartlett.</p></div>
-  <p class="small" style="margin-top:14px">ORBIT 360 v26</p>
+  <p class="small" style="margin-top:14px">ORBIT 360 v28</p>
 </section>
 
 <div class="footer"><div class="rule"></div>ORBIT 360 — made with care for two very good grandparents.<br/>Open it, see what's overhead, look up.</div>
@@ -529,18 +529,131 @@ function skyChartSVG(planes,radiusMi,highlight){
     return "";
   }
   var labels="";
+  /* v27: the ring-distance and compass chips are placed FIRST — before the
+     NEAREST chip below. They are the chart's scale and orientation, so they
+     must ALWAYS render; in v25/v26 they were placed after the wide NEAREST
+     chip with only a handful of candidate spots each, and on a busy chart
+     every spot could be blocked and the chip was dropped (the v26 probe
+     found the "8 mi" ring label and the "E" letter missing from the DOM on
+     a 13-plane chart). Now they take their spots while only the immovable
+     obstacles (star, markers, trails) contend, with much longer candidate
+     lists, and placeChipT adds two more tiers: a
+     whole-chart grid scan (anchor points ordered so the chip lands as
+     close to its own ring or edge as the crowding allows), then the same
+     candidates and grid again at a compact fs(16). Every one of those
+     attempts goes through chipFree at full clearance — zero chip-chip
+     overlaps, zero chip-vs-marker hits, zero chip-vs-trail hits. v28:
+     if even those fail, placeChipT's final tier ALWAYS places the chip
+     at the least-occluding spot rather than dropping it (see the v28
+     note at placeChipT) — a ring or compass label missing from the DOM
+     is worse than a chip resting over the edge of a trail. The NEAREST
+     chip, placed after them, has 16 named spots, a
+     full-chart grid scan and four size/form tiers to route around them. */
+  function placeChipT(cands,txt,fpx,fill,scoreFn){
+    var s=placeChip(cands,txt,fpx,fill);
+    if(s)return s;
+    if(scoreFn){ s=placeChip(gridCands(fpx,scoreFn),txt,fpx,fill); if(s)return s; }
+    var cf2=Math.min(fpx,fs(16));
+    if(cf2<fpx){
+      s=placeChip(cands,txt,cf2,fill);
+      if(s)return s;
+      if(scoreFn){ s=placeChip(gridCands(cf2,scoreFn),txt,cf2,fill); if(s)return s; }
+    }
+    /* v28 GUARANTEE: a ring-distance or compass chip must NEVER be absent
+       from the chart — it is the chart's scale / orientation. The tiers
+       above keep the v25 rule (full clearance, no paint-over) and in
+       practice they succeed; but placeChipT could still return "" when
+       every spot at both sizes was blocked, and the v27 randomised sweep
+       recorded ring labels missing from the DOM on busy charts
+       (ringMiss: 478 of 2,200, ITEM2: FAIL). So the last tier below
+       ALWAYS places the chip: at the compact size, on whichever
+       candidate (named spots first, then the whole-chart grid) occludes
+       the least — measured by chipPenalty — instead of dropping it.
+       Only these scale/orientation chips get this tier; the NEAREST
+       chip below still drops rather than paint over anything. */
+    return forceChip(cands,txt,cf2,fill,scoreFn);
+  }
+  /* how much a chip box would occlude: overlap area with chips already
+     placed, plus a heavy charge for every unit it closes inside a
+     marker / trail / star clearance radius. Zero means fully clear. */
+  function chipPenalty(g){
+    var pen=0,i,b,ox,oy,dx,dy,d;
+    for(i=0;i<placed.length;i++){ b=placed[i]; ox=Math.min(g.x0+g.w,b.x0+b.w)-Math.max(g.x0,b.x0); oy=Math.min(g.y0+g.h,b.y0+b.h)-Math.max(g.y0,b.y0); if(ox>0&&oy>0)pen+=ox*oy; }
+    for(i=0;i<obstacles.length;i++){ b=obstacles[i]; dx=Math.max(g.x0-b.x,0,b.x-(g.x0+g.w)); dy=Math.max(g.y0-b.y,0,b.y-(g.y0+g.h)); d=Math.sqrt(dx*dx+dy*dy); if(d<b.r)pen+=(b.r-d)*40; }
+    return pen;
+  }
+  function forceChip(cands,txt,fpx,fill,scoreFn){
+    var pool=cands.slice(), gi, i, t, p, best=null, bestPen=Infinity;
+    if(scoreFn){ var gc=gridCands(fpx,scoreFn); for(gi=0;gi<gc.length;gi++)pool.push(gc[gi]); }
+    for(i=0;i<pool.length;i++){ t=chipGeom(pool[i][0],pool[i][1],txt,fpx,pool[i][2]); p=chipPenalty(t); if(p<bestPen){ bestPen=p; best=t; if(p===0)break; } }
+    if(!best)return "";
+    placed.push(best);
+    return '<rect x="'+best.x0+'" y="'+best.y0+'" width="'+best.w+'" height="'+best.h+'" rx="6" fill="#081a33" stroke="rgba(150,190,240,.4)" stroke-width="1"/><text x="'+best.tx+'" y="'+best.ty+'" fill="'+fill+'" font-size="'+fpx+'" font-weight="700"'+(best.anchor==="middle"?' text-anchor="middle"':(best.anchor==="end"?' text-anchor="end"':""))+'>'+txt+'</text>';
+  }
+  /* last-resort candidates for a ring/compass chip: anchor points on a
+     12-unit grid over the whole chart, ordered by scoreFn (lowest first)
+     so the chip lands as close to where it belongs as the crowding
+     allows — for a ring label, hugging its own circle; for a compass
+     letter, near its own edge. Needed for the smallest rings at the
+     50/100-mile radii: their circles hug the centre star, so every
+     on-ring candidate can be inside the star's clearance at once.
+     Still placed only through chipFree at full clearance. */
+  function gridCands(fpx,scoreFn){
+    var pts=[], gx, gy;
+    for(gy=10;gy<=S-10;gy+=12)for(gx=10;gx<=S-10;gx+=12)pts.push([gx,gy]);
+    pts.sort(function(a,b){return scoreFn(a[0],a[1])-scoreFn(b[0],b[1]);});
+    return pts.map(function(p){return [p[0],p[1]+Math.round(fpx*0.36),"middle"];});
+  }
+  function ringScore(rfv){ return function(x,y){ return Math.abs(Math.hypot(x-C,y-C)-rfv); }; }
+  var smallRings=rings.filter(function(rm){ return R*(rm/radiusMi)<62; });
+  var smallSeen=0;
+  rings.forEach(function(rm){ var f=rm/radiusMi, rf=R*f;
+    if(rf>=62){
+      /* usual spot: the top of the ring, as before. Alternates walk around
+         the ring itself (every ~20° of bearing, three anchorings each) so
+         the distance label stays on its own ring wherever it lands. */
+      var rfpx=fs(21), rcands=[[C+5,C-rf+rfpx+13,"start"]];
+      [20,-20,38,-38,58,-58,76,-76,96,-96,115,-115,135,-135,155,-155,180].forEach(function(ad){ var ar=ad*Math.PI/180, px=C+rf*Math.sin(ar), py=C-rf*Math.cos(ar)+Math.round(rfpx*0.36); rcands.push([px,py,"middle"]); rcands.push([px,py,"start"]); rcands.push([px,py,"end"]); });
+      labels+=placeChipT(rcands,rm+" mi",rfpx,"#a8d4f5",ringScore(rf));
+    } else {
+      /* a small ring's label cannot sit at the top of its ring: that spot lands
+         within a few pixels of the home star at the centre (in the 25-mile view
+         the "8 mi" label sat there with the star's top point touching the "8";
+         in the 50/100-mile views the smallest labels landed right on the star).
+         Small-ring labels start east of the star instead; with two small rings
+         they stack below the centre line so they clear each other and the
+         larger rings' labels. v27: after the original six east/west slots,
+         the candidates walk AROUND the small ring itself at 15° steps
+         (three anchorings each), so a blocked east side no longer drops
+         the label. */
+      var baseY=smallRings.length>1?(smallSeen===0?C+18:C+58):C+10;
+      smallSeen++;
+      var scands=[[C+39,baseY,"start"],[C+39,baseY+42,"start"],[C-39,baseY,"end"],[C-39,baseY+42,"end"],[C+39,C+100,"start"],[C-39,C+100,"end"]];
+      [15,30,45,60,75,105,120,135,150,165,180,195,210,225,240,255,285,300,315,330,345].forEach(function(bd){ var br2=bd*Math.PI/180, qx=C+rf*Math.sin(br2), qy=C-rf*Math.cos(br2)+Math.round(fs(21)*0.36); scands.push([qx,qy,"middle"]); scands.push([qx,qy,"start"]); scands.push([qx,qy,"end"]); });
+      labels+=placeChipT(scands,rm+" mi",fs(21),"#a8d4f5",ringScore(rf));
+    } });
+  /* compass letters: the original three edge spots each, then further
+     inboard and at more vertical offsets — still in their own edge band,
+     so a letter never wanders toward the middle of the chart. */
+  var nfpx=fs(24), cfpx=fs(20);
+  labels+=placeChipT([[C,nfpx+2,"middle"],[C-60,nfpx+2,"middle"],[C+60,nfpx+2,"middle"],[C-110,nfpx+2,"middle"],[C+110,nfpx+2,"middle"],[C-30,nfpx+26,"middle"],[C+30,nfpx+26,"middle"],[C,nfpx+26,"middle"]],"N",nfpx,"#eec25e",function(x,y){return Math.hypot(x-C,y-24);});
+  labels+=placeChipT([[C,S-4,"middle"],[C-60,S-4,"middle"],[C+60,S-4,"middle"],[C-110,S-4,"middle"],[C+110,S-4,"middle"],[C-30,S-28,"middle"],[C+30,S-28,"middle"],[C,S-28,"middle"]],"S",cfpx,"#dceeff",function(x,y){return Math.hypot(x-C,y-(S-24));});
+  labels+=placeChipT([[10,C+7,"start"],[10,C-42,"start"],[10,C+56,"start"],[34,C+7,"start"],[34,C-42,"start"],[34,C+56,"start"],[58,C+7,"start"],[58,C-42,"start"],[58,C+56,"start"],[10,C-92,"start"],[10,C+106,"start"]],"W",cfpx,"#dceeff",function(x,y){return Math.hypot(x-24,y-C);});
+  labels+=placeChipT([[S-10,C+7,"end"],[S-10,C-42,"end"],[S-10,C+56,"end"],[S-34,C+7,"end"],[S-34,C-42,"end"],[S-34,C+56,"end"],[S-58,C+7,"end"],[S-58,C-42,"end"],[S-58,C+56,"end"],[S-10,C-92,"end"],[S-10,C+106,"end"]],"E",cfpx,"#dceeff",function(x,y){return Math.hypot(x-(S-24),y-C);});
   /* v24: the NEAREST plane gets a VISIBLE label on the chart itself. Up to
      v23 the nearest plane's direction/distance existed on the chart only as
      a <title> inside its arrow (tooltip / screen-reader text — the v23
      probe could match it in the accessible text but could not SEE any label
      beside the arrows in any framing; the only visible nearest text was the
      caption UNDER the chart). The label is now an opaque chip in the same
-     placed-chip system as the rings and compass letters: it is placed FIRST,
-     before them, so it only ever contends with the things that cannot move —
-     the home star (a 19-unit obstacle at the centre) and every plane marker
-     (16 units, 22 around the nearest plane itself, so its gold ring and
-     arrow stay fully visible) — and the ring and compass chips, which have
-     alternate spots of their own, then route around it. Its words come from
+     placed-chip system as the rings and compass letters. (v24 placed it
+     FIRST, before them; v27 places it AFTER them — see the v27 note above:
+     the ring and compass chips are the chart's scale and orientation and
+     must always render, so they take their spots first and this chip
+     routes around them, exactly as it routes around the things that
+     cannot move — the home star (a 19-unit obstacle at the centre) and
+     every plane marker (16 units, 22 around the nearest plane itself, so
+     its gold ring and arrow stay fully visible).) Its words come from
      the same stored a._mi / a._brg the list, the caption and the <title>
      use — the distance is a._mi to one decimal and the direction
      abbreviation is the same 8-point sectoring as a._dir (compass()),
@@ -555,25 +668,23 @@ function skyChartSVG(planes,radiusMi,highlight){
     var np24=pos[nearI], nfpx24=fs(19), nMid24=Math.round(nfpx24*0.36);
     var nCands24=[[np24.x,np24.y-34,"middle"],[np24.x,np24.y+nfpx24+40,"middle"],[np24.x+52,np24.y+nMid24,"start"],[np24.x-52,np24.y+nMid24,"end"],[np24.x+52,np24.y+nfpx24+40,"start"],[np24.x-52,np24.y+nfpx24+40,"end"],[C,S-46,"middle"],[C,nfpx24+46,"middle"],[16,S-46,"start"],[S-16,S-46,"end"],[16,nfpx24+46,"start"],[S-16,nfpx24+46,"end"],[C,C+94,"middle"],[C,C-80,"middle"],[C,124,"middle"],[C,238,"middle"]];
     var nDone24=false, ni24, ng24;
-    /* the four compass chips have only three candidate spots each, all in
-       their own edge band — if this wide chip took a compass chip's usual
-       spot, that chip's every alternate would clash and its fallback would
-       paint over this label's words. So the compass chips' usual spots are
-       reserved as extra obstacles for THIS chip only (the ring chips need
-       no reservation: they carry fifty-odd alternates each). */
-    var nRes24=[{x0:C-22,y0:0,w:44,h:44},{x0:C-20,y0:S-42,w:40,h:42},{x0:0,y0:C-20,w:38,h:40},{x0:S-38,y0:C-20,w:38,h:40}];
-    function nFree24(g){ if(!chipFree(g))return false; for(var ri=0;ri<nRes24.length;ri++){ var b=nRes24[ri]; if(g.x0-3<b.x0+b.w&&b.x0-3<g.x0+g.w&&g.y0-3<b.y0+b.h&&b.y0-3<g.y0+g.h) return false; } return true; }
+    /* v27: the v24 compass reservations (nRes24 / nFree24) are REMOVED.
+       They existed to stop this wide chip from taking a compass chip's
+       usual spot back when this chip was placed first; now the ring and
+       compass chips are placed BEFORE this block, so they are already in
+       `placed` and plain chipFree keeps this chip clear of them. Every
+       tier below therefore tests chipFree directly. */
     function nDraw1(g){ placed.push(g); return '<rect x="'+g.x0+'" y="'+g.y0+'" width="'+g.w+'" height="'+g.h+'" rx="6" fill="#081a33" stroke="rgba(238,194,94,.65)" stroke-width="1.2"/><text x="'+g.tx+'" y="'+g.ty+'" fill="#eec25e" font-size="'+nfpx24+'" font-weight="700"'+(g.anchor==="middle"?' text-anchor="middle"':(g.anchor==="end"?' text-anchor="end"':""))+'>'+nTxt24+'</text>'; }
-    for(ni24=0;ni24<nCands24.length;ni24++){ ng24=chipGeom(nCands24[ni24][0],nCands24[ni24][1],nTxt24,nfpx24,nCands24[ni24][2]); if(nFree24(ng24)){ placed.push(ng24); labels+='<rect x="'+ng24.x0+'" y="'+ng24.y0+'" width="'+ng24.w+'" height="'+ng24.h+'" rx="6" fill="#081a33" stroke="rgba(238,194,94,.65)" stroke-width="1.2"/><text x="'+ng24.tx+'" y="'+ng24.ty+'" fill="#eec25e" font-size="'+nfpx24+'" font-weight="700"'+(ng24.anchor==="middle"?' text-anchor="middle"':(ng24.anchor==="end"?' text-anchor="end"':""))+'>'+nTxt24+'</text>'; nDone24=true; break; } }
+    for(ni24=0;ni24<nCands24.length;ni24++){ ng24=chipGeom(nCands24[ni24][0],nCands24[ni24][1],nTxt24,nfpx24,nCands24[ni24][2]); if(chipFree(ng24)){ placed.push(ng24); labels+='<rect x="'+ng24.x0+'" y="'+ng24.y0+'" width="'+ng24.w+'" height="'+ng24.h+'" rx="6" fill="#081a33" stroke="rgba(238,194,94,.65)" stroke-width="1.2"/><text x="'+ng24.tx+'" y="'+ng24.ty+'" fill="#eec25e" font-size="'+nfpx24+'" font-weight="700"'+(ng24.anchor==="middle"?' text-anchor="middle"':(ng24.anchor==="end"?' text-anchor="end"':""))+'>'+nTxt24+'</text>'; nDone24=true; break; } }
     if(!nDone24){
       /* v25: before giving up on the single line, scan a fine grid over
          the WHOLE chart at full clearance (star, every marker at full
-         radius, every trail, compass reservations). The v24 tier 1 tried
+         radius, every trail, every chip already placed). The v24 tier 1 tried
          only its 16 named spots, so a clear band elsewhere on the chart
          went unused and crowded charts fell through to smaller forms —
          or, in the old last resort, to a paint-over. */
       var gw24=Math.ceil(nTxt24.length*nfpx24*0.64)+18, gh24=nfpx24+11;
-      for(var gy24=1;gy24+gh24<=S-1&&!nDone24;gy24+=7)for(var gx24=1;gx24+gw24<=S-1&&!nDone24;gx24+=7){ var tg24={x0:gx24,y0:gy24,w:gw24,h:gh24,tx:gx24+gw24/2,ty:gy24+nfpx24+4,anchor:"middle"}; if(nFree24(tg24)){ labels+=nDraw1(tg24); nDone24=true; } }
+      for(var gy24=1;gy24+gh24<=S-1&&!nDone24;gy24+=7)for(var gx24=1;gx24+gw24<=S-1&&!nDone24;gx24+=7){ var tg24={x0:gx24,y0:gy24,w:gw24,h:gh24,tx:gx24+gw24/2,ty:gy24+nfpx24+4,anchor:"middle"}; if(chipFree(tg24)){ labels+=nDraw1(tg24); nDone24=true; } }
     }
     if(!nDone24){
       /* crowded chart (a dozen-plus planes can leave no full-width band
@@ -589,29 +700,23 @@ function skyChartSVG(planes,radiusMi,highlight){
       var f2=fs(18), w2=Math.ceil(Math.max(7,line2_24.length)*f2*0.64)+18, h2=2*f2+15, g2=null;
       var ctr2=[[np24.x+64,np24.y],[np24.x-64,np24.y],[np24.x,np24.y-56],[np24.x,np24.y+56],[np24.x+60,np24.y-50],[np24.x-60,np24.y-50],[np24.x+60,np24.y+50],[np24.x-60,np24.y+50],[62,62],[C,60],[S-62,62],[62,C],[S-62,C],[62,S-60],[C,S-60],[S-62,S-60],[C,96],[C,S-96],[96,120],[S-96,120],[96,228],[S-96,228],[C,132],[C,214]];
       for(var gy2=40;gy2<=S-40;gy2+=8)for(var gx2=40;gx2<=S-40;gx2+=8)ctr2.push([gx2,gy2]);
-      for(ni24=0;ni24<ctr2.length;ni24++){ var cx2=Math.max(1,Math.min(S-1-w2,Math.round(ctr2[ni24][0]-w2/2))), cy2=Math.max(1,Math.min(S-1-h2,Math.round(ctr2[ni24][1]-h2/2))); var t2={x0:cx2,y0:cy2,w:w2,h:h2}; if(nFree24(t2)){ g2=t2; break; } }
+      for(ni24=0;ni24<ctr2.length;ni24++){ var cx2=Math.max(1,Math.min(S-1-w2,Math.round(ctr2[ni24][0]-w2/2))), cy2=Math.max(1,Math.min(S-1-h2,Math.round(ctr2[ni24][1]-h2/2))); var t2={x0:cx2,y0:cy2,w:w2,h:h2}; if(chipFree(t2)){ g2=t2; break; } }
       if(!g2){
         /* tier 3 (v25 REWRITTEN): the same two lines at fs(16) — searched
            at FULL clearance. The v24 tier 3 relaxed ordinary marker
            clearance 16 → 12 and admitted a trail might pass under the
            chip; that relaxation is deleted. This tier now differs from
            tier 2 only in size: the smaller chip is walked over the same
-           candidate list with nFree24 — star, every marker at its full
-           16/22 radius, every trail obstacle and the compass
-           reservations all still apply. */
+           candidate list with chipFree — star, every marker at its full
+           16/22 radius, every trail obstacle and every chip already
+           placed all still apply. */
         var f3=fs(16), w3=Math.ceil(Math.max(7,line2_24.length)*f3*0.64)+18, h3=2*f3+15;
-        for(ni24=0;ni24<ctr2.length;ni24++){ var cx3=Math.max(1,Math.min(S-1-w3,Math.round(ctr2[ni24][0]-w3/2))), cy3=Math.max(1,Math.min(S-1-h3,Math.round(ctr2[ni24][1]-h3/2))); var t3={x0:cx3,y0:cy3,w:w3,h:h3}; if(nFree24(t3)){ g2=t3; f2=f3; break; } }
+        for(ni24=0;ni24<ctr2.length;ni24++){ var cx3=Math.max(1,Math.min(S-1-w3,Math.round(ctr2[ni24][0]-w3/2))), cy3=Math.max(1,Math.min(S-1-h3,Math.round(ctr2[ni24][1]-h3/2))); var t3={x0:cx3,y0:cy3,w:w3,h:h3}; if(chipFree(t3)){ g2=t3; f2=f3; break; } }
       }
-      if(!g2){
-        /* tier 4 (v25): the fs(16) two-line chip WITHOUT the compass
-           reservations. Those reservations only protected the compass
-           chips' usual spots from this chip — and since v25 the compass
-           chips drop rather than paint over, a NEAREST chip landing on a
-           reserved spot costs at most a dropped compass letter, never an
-           overlap. Star, markers and trails still clear at FULL radius
-           (chipFree, unrelaxed). */
-        for(ni24=0;ni24<ctr2.length;ni24++){ var cx4=Math.max(1,Math.min(S-1-w3,Math.round(ctr2[ni24][0]-w3/2))), cy4=Math.max(1,Math.min(S-1-h3,Math.round(ctr2[ni24][1]-h3/2))); var t4={x0:cx4,y0:cy4,w:w3,h:h3}; if(chipFree(t4)){ g2=t4; f2=f3; break; } }
-      }
+      /* v27: the v25 tier 4 — the same fs(16) two-line chip retried
+         WITHOUT the compass reservations — is gone: with the reservations
+         themselves removed, tier 3 above already runs exactly that search
+         (same size, same candidates, plain chipFree). Nothing is lost. */
       if(g2){ placed.push(g2); labels+='<rect x="'+g2.x0+'" y="'+g2.y0+'" width="'+g2.w+'" height="'+g2.h+'" rx="6" fill="#081a33" stroke="rgba(238,194,94,.65)" stroke-width="1.2"/><text x="'+(g2.x0+g2.w/2)+'" y="'+(g2.y0+f2+3)+'" fill="#eec25e" font-size="'+f2+'" font-weight="700" text-anchor="middle">NEAREST</text><text x="'+(g2.x0+g2.w/2)+'" y="'+(g2.y0+2*f2+6)+'" fill="#eec25e" font-size="'+f2+'" font-weight="700" text-anchor="middle">'+line2_24+'</text>'; nDone24=true; }
     }
     if(!nDone24){
@@ -633,36 +738,10 @@ function skyChartSVG(planes,radiusMi,highlight){
        names the nearest plane in words. (The randomised sweep must show
        this never happens for realistic 1–8-plane traffic.) */
   }
-  var smallRings=rings.filter(function(rm){ return R*(rm/radiusMi)<62; });
-  var smallSeen=0;
-  rings.forEach(function(rm){ var f=rm/radiusMi, rf=R*f; out+='<circle cx="'+C+'" cy="'+C+'" r="'+rf+'" fill="none" stroke="rgba(150,190,240,.3)"/>';
-    if(rf>=62){
-      /* usual spot: the top of the ring, as before. Alternates walk around
-         the ring itself (every ~20° of bearing, three anchorings each) so
-         the distance label stays on its own ring wherever it lands. */
-      var rfpx=fs(21), rcands=[[C+5,C-rf+rfpx+13,"start"]];
-      [20,-20,38,-38,58,-58,76,-76,96,-96,115,-115,135,-135,155,-155,180].forEach(function(ad){ var ar=ad*Math.PI/180, px=C+rf*Math.sin(ar), py=C-rf*Math.cos(ar)+Math.round(rfpx*0.36); rcands.push([px,py,"middle"]); rcands.push([px,py,"start"]); rcands.push([px,py,"end"]); });
-      labels+=placeChip(rcands,rm+" mi",rfpx,"#a8d4f5");
-    } else {
-      /* a small ring's label cannot sit at the top of its ring: that spot lands
-         within a few pixels of the home star at the centre (in the 25-mile view
-         the "8 mi" label sat there with the star's top point touching the "8";
-         in the 50/100-mile views the smallest labels landed right on the star).
-         Small-ring labels move to the east side instead, their chips starting a
-         clear gap east of the star's disc; with two small rings they stack below
-         the centre line so they clear each other and the larger rings' labels. */
-      var baseY=smallRings.length>1?(smallSeen===0?C+18:C+58):C+10;
-      smallSeen++;
-      /* usual spot first (east of the star, stacked when there are two), then
-         lower east slots, then the mirrored west side — the first spot that
-         clears the star, the other chips and every plane marker wins. */
-      labels+=placeChip([[C+39,baseY,"start"],[C+39,baseY+42,"start"],[C-39,baseY,"end"],[C-39,baseY+42,"end"],[C+39,C+100,"start"],[C-39,C+100,"end"]],rm+" mi",fs(21),"#a8d4f5");
-    } });
-  var nfpx=fs(24), cfpx=fs(20);
-  labels+=placeChip([[C,nfpx+2,"middle"],[C-60,nfpx+2,"middle"],[C+60,nfpx+2,"middle"]],"N",nfpx,"#eec25e");
-  labels+=placeChip([[C,S-4,"middle"],[C-60,S-4,"middle"],[C+60,S-4,"middle"]],"S",cfpx,"#dceeff");
-  labels+=placeChip([[10,C+7,"start"],[10,C-42,"start"],[10,C+56,"start"]],"W",cfpx,"#dceeff");
-  labels+=placeChip([[S-10,C+7,"end"],[S-10,C-42,"end"],[S-10,C+56,"end"]],"E",cfpx,"#dceeff");
+  /* v27: the ring CIRCLES are drawn here, into `out` under the markers as
+     always — but their label chips, and the compass letters, were already
+     placed at the top of this function, BEFORE the NEAREST chip. */
+  rings.forEach(function(rm){ var f=rm/radiusMi, rf=R*f; out+='<circle cx="'+C+'" cy="'+C+'" r="'+rf+'" fill="none" stroke="rgba(150,190,240,.3)"/>'; });
   /* the home star sits on its own opaque disc, drawn last of all: no marker or
      ring line can show through the star's open points, and the disc's edge is
      the clearance zone every other label keeps away from */
@@ -1157,13 +1236,23 @@ function fetchWeather(){
     var tonight=first;
     if(tonightCand&&tonightCand.startTime){ var tst=new Date(tonightCand.startTime); var dayDiff=isNaN(tst.getTime())?99:Math.abs(chiDayNum(tst)-chiDayNum(new Date())); if(dayDiff<=1)tonight=tonightCand; }
     state.wxTonight=tonight.shortForecast.toLowerCase()+", "+tonight.temperature+" degrees. "+tonight.detailedForecast; state.wxBackup=null; state.wxFailed=false; updateBriefing();
-    state.wxTemp=tonight.temperature; var wb=$("homeWxBig"); if(wb)wb.textContent=tonight.temperature; var wl=$("homeWxLabel"); if(wl)wl.textContent=(tonight.shortForecast||"Tonight").toUpperCase()+" TONIGHT";
+    /* v27: the Home pill and weather card show the CURRENT temperature and
+       condition — from `first`, the same "now" period the heading and the
+       Weather page use — never tonight's low dressed up as now (v26 showed
+       "38°F ... TONIGHT" on the card while it was 63°F and sunny). Tonight's
+       low is shown separately, labelled, in the card's sub-line below. */
+    state.wxTemp=first.temperature; var wb=$("homeWxBig"); if(wb)wb.textContent=first.temperature; var wl=$("homeWxLabel"); if(wl)wl.textContent=(first.shortForecast||"Right now").toUpperCase()+" — RIGHT NOW";
     setTrack("wx","ok"); setFresh("freshWx","🌦 Weather: NWS updated "+nowTime());
     $("homeWxLine").innerHTML="Bartlett now: "+first.temperature+"°"+first.temperatureUnit+" · "+esc(first.shortForecast)+" — tap Weather below for the full forecast.";
     var precip=(tonight.probabilityOfPrecipitation&&tonight.probabilityOfPrecipitation.value)||0;
     var windNums=String(tonight.windSpeed||"").match(/\d+/g), windMph=windNums?Math.max.apply(null,windNums.map(Number)):null;
     var wcVal=(tonight.windChill!=null&&!isNaN(tonight.windChill))?Number(tonight.windChill):null;
     wxTonightVerdict(tonight.shortForecast,tonight.temperature,precip,{detailed:tonight.detailedForecast,windMph:windMph,windChillF:wcVal});
+    /* v27: the card's sub-line, alongside the verdict, carries tonight's low
+       LABELLED as tonight's low — separate from the "right now" temperature
+       in the big number above it. (The Tonight verdict and the Tonight
+       detail line are untouched.) */
+    var hts27=$("homeTonightSub"); if(hts27)hts27.textContent="Tonight: low "+tonight.temperature+"°F";
     var td=$("tonightDetail"); if(td){ var issNote=(tonightClear===true)?" The station is easiest to spot just after sunset or before sunrise as a bright, steady, non-blinking light — tonight's sky should allow it. The Station page explains when a pass is visible from Bartlett.":(tonightClear==="mixed"?" If the sky clears during the night, the station may still show as a bright, steady, non-blinking light just after sunset or before sunrise — the Station page explains when a pass is visible.":" Tonight's sky won't show the station, however close it passes — the trackers above still show exactly where it is."); td.textContent=tonight.name+": "+tonight.detailedForecast+issNote; }
     if(dot){ dot.className="dot"; st.textContent="Live — National Weather Service, updated "+tt.toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit",timeZone:"America/Chicago"})+".";
       $("wxNow").innerHTML='<div class="wxnow">'+wxIconSVG(first.shortForecast,first.isDaytime)+'<div><div class="bignum">'+first.temperature+'°'+first.temperatureUnit+'</div><p style="font-size:1.2rem;margin:2px 0">'+esc(first.shortForecast)+' — '+esc(first.name)+'</p></div></div><p style="color:var(--muted)">'+esc(first.detailedForecast)+'</p><div class="facts"><div class="fact"><span class="fl">Wind</span><span class="fv">'+esc(first.windSpeed)+" "+esc(first.windDirection)+'</span></div><div class="fact"><span class="fl">Chance of rain</span><span class="fv">'+((first.probabilityOfPrecipitation&&first.probabilityOfPrecipitation.value!=null)?first.probabilityOfPrecipitation.value+"%":"—")+'</span></div></div>';
@@ -1206,7 +1295,11 @@ function renderPlanes(ac,when){
      stored values — none of them recomputes or re-rounds a distance or a bearing. */
   ac.forEach(function(a){ var rawMi=(a.dst!=null&&!isNaN(a.dst))?a.dst*1.15078:havMi(HOME.lat,HOME.lon,a.lat,a.lon); a._mi=Math.round(rawMi*10)/10; a._brg=bearing(HOME.lat,HOME.lon,a.lat,a.lon); a._dir=compass(a._brg); a._rare=INTERESTING[a.t]?1:0; });
   ac=ac.filter(function(a){return a._mi<=skyRadiusMi;});
-  ac.sort(function(x,y){return (y._rare-x._rare)||(x._mi-y._mi);});
+  /* v27: sorted by DISTANCE only, nearest first — row #1 of the list IS the
+     nearest plane, so the Home caption, the chart's NEAREST chip, list row #1
+     and the Verify box (which quotes row #1) all name the same plane.
+     "Worth a look" stays a per-row badge (a._rare), never the sort order. */
+  ac.sort(function(x,y){return x._mi-y._mi;});
   lastPlanes=ac; var shown=ac.slice(0,15); lastShown=shown;
   var sc=$("skyChart"); if(sc)sc.innerHTML=skyChartSVG(shown,skyRadiusMi,null);
   var hc=$("homeSkyChart"); if(hc)hc.innerHTML=skyChartSVG(ac.slice(0,25),skyRadiusMi,null);
@@ -1236,7 +1329,7 @@ function skySuccess(d,meta){
   var dot=$("skyDot"),st=$("skyStatusText"); if(dot)dot.className="dot";
   if(!inRange){ var fh=chiParts(new Date()).h; var fedexNote=fh<5?"The FedEx rush is winding down in these small hours; the next one builds late tonight.":(fh<11?"The overnight FedEx rush has ended; the next one builds late tonight.":(fh<17?"The FedEx rush builds late tonight, so the sky usually gets busier after dark.":(fh<22?"The FedEx rush builds later tonight, so check again after dark.":"The FedEx rush should be building right about now — check again in a few minutes."))); if(st)st.textContent="The feed answered — but no aircraft are broadcasting within "+skyRadiusMi+" miles right now."+(feedTotal?" The feed listed "+feedTotal+" aircraft in total, all farther away.":"")+" Try a wider distance, or check again soon. "+fedexNote; $("skyList").innerHTML=""; var vl0=$("verifyLookLine"); if(vl0)vl0.textContent="No planes are broadcasting within "+skyRadiusMi+" miles right now, so there is no plane #1 line to copy here — check again soon, or try a wider distance below."; $("skyReadbar").setAttribute("data-speak","The live sky feed is working, but no aircraft are broadcasting within this distance of Bartlett right now. Try the wider distance, or check again in a little while. "+fedexNote); return; }
   var ageNote=meta.ageMin>=5?" Feed is "+Math.round(meta.ageMin)+" minutes old — planes move about 30 miles in 5 minutes at cruising speed, so positions have shifted since this snapshot.":"";
-  if(st)st.textContent=inRange+" planes within "+skyRadiusMi+" miles of Bartlett — showing the "+shown.length+" nearest and most interesting. The feed listed "+feedTotal+" aircraft in total."+ageNote;
+  if(st)st.textContent=inRange+" planes within "+skyRadiusMi+" miles of Bartlett — showing the "+shown.length+" nearest. The feed listed "+feedTotal+" aircraft in total."+ageNote;
   $("skyList").innerHTML=shown.map(function(a,i){ var call=(a.flight||"").trim()||"Private flight"; var alt=a.alt_baro==="ground"||a.alt_baro===0?"On the ground":(a.alt_baro?Number(a.alt_baro).toLocaleString("en-US")+" feet":"Altitude not reported"); var spd=a.gs?Math.round(a.gs*1.15078)+" mph":"—"; var hdg=(a.track!=null&&!isNaN(a.track))?Math.round(a.track)+"° "+compass(a.track):"—"; var reg=a.r?" · Registration "+esc(a.r):""; var star=a._rare?'<span class="pill calc">★ WORTH A LOOK</span>':'<span class="pill live">LIVE FEED</span>';
     return '<div class="card sky-list-card'+(a._rare?" rare":"")+'"><div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><span class="call">'+(i+1)+'. '+esc(call)+'</span>'+star+'</div><p style="margin-top:4px"><b style="color:#fff">'+esc(typeNameOf(a))+reg+'</b></p><div class="lookline">👀 '+lookLineText(a)+'</div><div class="facts"><div class="fact"><span class="fl">Distance</span><span class="fv">'+fmtMi(a._mi)+'</span></div><div class="fact"><span class="fl">Height</span><span class="fv">'+alt+'</span></div><div class="fact"><span class="fl">Speed</span><span class="fv">'+spd+'</span></div><div class="fact"><span class="fl">Flying toward</span><span class="fv">'+hdg+'</span></div></div></div>'; }).join("");
   /* the verify box at the top of this page copies plane #1's LOOK line from these SAME
@@ -1246,7 +1339,7 @@ function skySuccess(d,meta){
      updated, so it could send the reader looking the wrong way.) */
   var vl=$("verifyLookLine"); if(vl&&shown.length)vl.textContent="Right now plane #1's line reads: “"+lookLineText(shown[0])+"” — copied live from the list below, not an example.";
   var speak="Local sky report for Bartlett, from "+meta.sourceLabel+" at "+fmtClock(when)+". There are "+inRange+" aircraft within "+skyRadiusMi+" miles of Bartlett (the feed listed "+feedTotal+" in total). ";
-  shown.slice(0,3).forEach(function(a,i){ speak+=(i===0?"Nearest and most notable: ":"Also nearby: ")+((a.flight||"").trim()||"a private flight")+", a "+typeNameOf(a)+", "+fmtMi(a._mi)+" "+a._dir+" of Bartlett"+(a.alt_baro&&a.alt_baro!=="ground"?", at "+Number(a.alt_baro).toLocaleString("en-US")+" feet":"")+". "; });
+  shown.slice(0,3).forEach(function(a,i){ speak+=(i===0?"Nearest: ":"Also nearby: ")+((a.flight||"").trim()||"a private flight")+", a "+typeNameOf(a)+", "+fmtMi(a._mi)+" "+a._dir+" of Bartlett"+(a.alt_baro&&a.alt_baro!=="ground"?", at "+Number(a.alt_baro).toLocaleString("en-US")+" feet":"")+". "; });
   speak+="Some aircraft — especially military and privacy-blocked ones — never appear on this feed.";
   $("skyReadbar").setAttribute("data-speak",speak);
 }
@@ -1283,7 +1376,8 @@ function fetchSky(){
   var cd=$("skyCooldown"); if(cd)cd.textContent="";
   /* 1) same-origin cached feed FIRST — no CORS, no relay, 8s cap */
   function tryCache(again){
-    return fetchTimeout("aircraft.json",8000,{cache:"no-store"}).then(function(r){ if(!r.ok)throw new Error("no cache"); return r.json(); }).then(function(d){
+    /* ?cb= gives every fetch a fresh URL so the GitHub Pages CDN edge (which caches aircraft.json for up to 600s) can't hand back a stale copy the app then refuses as over 10 minutes old; no-store alone doesn't stop the edge. Date.now() is evaluated per call, so the retry gets its own fresh value too. */
+    return fetchTimeout("aircraft.json?cb="+Date.now(),8000,{cache:"no-store"}).then(function(r){ if(!r.ok)throw new Error("no cache"); return r.json(); }).then(function(d){
       if(!d||!Array.isArray(d.ac))throw new Error("bad cache shape");
       var fetched=d.fetched_at?new Date(d.fetched_at):(d.now?new Date(d.now<1e12?d.now*1000:d.now):null);
       if(!fetched||isNaN(fetched.getTime()))throw {stale:true,ageMin:Infinity,fetched:null,unparseable:true};
