@@ -314,7 +314,7 @@ button{ font-family:inherit; } :focus-visible{ outline:3px solid var(--gold); ou
     <p>5. LIVE means measured just now. CALCULATED means worked out from a known path.</p></div>
   <div class="card"><h3>Put Orbit on the Home Screen</h3><p>On an iPhone: open this page in Safari, tap Share (square with an up arrow), then Add to Home Screen. Orbit then opens full-screen from its own icon, like an app — no account or login, ever.</p><p>On Android: open in Chrome, tap ⋮, then Add to Home screen.</p></div>
   <div class="card"><h3>About the information</h3><p>Space facts checked against NASA/JPL, November 7, 2026. Weather live from the National Weather Service. Station position live from orbital data. Airplane positions live from adsb.fi's open feed, read first from a cached copy on this same site (aircraft.json) because the feed does not answer browsers directly — that cached-feed pattern is what most small personal trackers use. Orbit shows the feed's name, its time, and how old it is on every report, and never shows an old report as live. Weather is from the National Weather Service first, with Open-Meteo as a labelled backup. No location is tracked — Local Sky always looks at Bartlett.</p></div>
-  <p class="small" style="margin-top:14px">ORBIT 360 v18</p>
+  <p class="small" style="margin-top:14px">ORBIT 360 v19</p>
 </section>
 
 <div class="footer"><div class="rule"></div>ORBIT 360 — made with care for two very good grandparents.<br/>Open it, see what's overhead, look up.</div>
@@ -447,6 +447,10 @@ function skyChartSVG(planes,radiusMi,highlight){
   var ageMin=lastFeedMeta?(Date.now()-lastFeedMeta.when.getTime())/60000:0;
   var fade=(1-0.7*Math.min(1,Math.max(0,ageMin)/10)).toFixed(2);
   var nearI=-1,nearD=1e9; planes.forEach(function(a,i){ var dd=(a._mi!=null?a._mi:1e9); if(dd<nearD){nearD=dd;nearI=i;} });
+  /* plane positions are computed ONCE, here, from the same stored a._brg / a._mi
+     the labels and list use, so the label placer below knows exactly where every
+     marker will be drawn before it chooses a spot for any chip (v19). */
+  var pos=planes.map(function(a){ var brg=(a._brg!=null?a._brg:bearing(HOME.lat,HOME.lon,a.lat,a.lon)); var br=brg*Math.PI/180; var fr=Math.min(1,(a._mi||0)/radiusMi); return {x:C+Math.sin(br)*R*fr, y:C-Math.cos(br)*R*fr}; });
   out+='<svg viewBox="0 0 '+S+' '+S+'" role="img" aria-label="Sky chart: plane positions around Bartlett">';
   out+='<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="'+stops[0]+'"/><stop offset=".55" stop-color="'+stops[1]+'"/><stop offset="1" stop-color="'+stops[2]+'"/></linearGradient></defs>';
   out+='<circle cx="'+C+'" cy="'+C+'" r="'+R+'" fill="url(#'+gid+')" stroke="rgba(150,190,240,.45)" stroke-width="1.5"/>';
@@ -464,19 +468,54 @@ function skyChartSVG(planes,radiusMi,highlight){
      letters and spaces alike, with the text on top of it. Whatever sits under a
      label — arrow, dot, trail or ring line — is hidden by the chip, and the
      chip's padding keeps it clear of the letter shapes themselves. */
-  function chip(x,y,txt,fpx,anchor,fill){
+  /* v19: the labels are BIGGER and they are PLACED, not just drawn last.
+     Bigger: ring distances fs(21) (was fs(13) — about 11pt on a phone, under
+     the app's own 22pt floor), compass letters fs(20), N fs(24). Placed: a
+     chip is tried at its usual spot first, then at a list of alternate spots,
+     and takes the first whose opaque box clears (a) every chip already
+     placed, (b) the home star's disc, and (c) every plane marker — a circle
+     of radius 16 around an arrow, and 22 around the NEAREST plane, so its
+     gold ring (r16) and arrow can never slip under a chip. The map
+     evaluation caught exactly that in v18: the nearest plane's arrow hiding
+     behind its own "8 mi" ring chip. So now neither side can cover the
+     other — a label never hides a plane, and (the v13–v16 rule, unchanged)
+     no plane ever paints over a label, because chips still draw last and
+     still land only where no marker sits. If every spot is taken on a very
+     crowded chart, a chip falls back to its usual spot, as v18 behaved. */
+  function chipGeom(x,y,txt,fpx,anchor){
     var w=Math.ceil(txt.length*fpx*0.64)+18, h=fpx+11;
-    var x0=anchor==="middle"?Math.round(x-w/2):x-9;
+    var x0=anchor==="middle"?Math.round(x-w/2):(anchor==="end"?Math.round(x-w+9):Math.round(x-9));
     var y0=Math.round(y-fpx-4);
     if(x0<1)x0=1; if(x0+w>S-1)x0=S-1-w; if(y0<1)y0=1; if(y0+h>S-1)y0=S-1-h;
-    return '<rect x="'+x0+'" y="'+y0+'" width="'+w+'" height="'+h+'" rx="6" fill="#081a33" stroke="rgba(150,190,240,.4)" stroke-width="1"/><text x="'+x+'" y="'+y+'" fill="'+fill+'" font-size="'+fpx+'" font-weight="700"'+(anchor==="middle"?' text-anchor="middle"':"")+'>'+txt+'</text>';
+    var tx=anchor==="middle"?x0+w/2:(anchor==="end"?x0+w-9:x0+9);
+    return {x0:x0,y0:y0,w:w,h:h,tx:tx,ty:y0+fpx+4,anchor:anchor};
+  }
+  var placed=[];
+  var obstacles=[{x:C,y:C,r:19}];
+  pos.forEach(function(p,i){ obstacles.push({x:p.x,y:p.y,r:(i===nearI?22:16)}); });
+  function chipFree(g){
+    var i,b,dx,dy;
+    for(i=0;i<placed.length;i++){ b=placed[i]; if(g.x0-3<b.x0+b.w&&b.x0-3<g.x0+g.w&&g.y0-3<b.y0+b.h&&b.y0-3<g.y0+g.h) return false; }
+    for(i=0;i<obstacles.length;i++){ b=obstacles[i]; dx=Math.max(g.x0-b.x,0,b.x-(g.x0+g.w)); dy=Math.max(g.y0-b.y,0,b.y-(g.y0+g.h)); if(dx*dx+dy*dy<b.r*b.r) return false; }
+    return true;
+  }
+  function placeChip(cands,txt,fpx,fill){
+    var g=null,i,t;
+    for(i=0;i<cands.length;i++){ t=chipGeom(cands[i][0],cands[i][1],txt,fpx,cands[i][2]); if(chipFree(t)){ g=t; break; } if(!g)g=t; }
+    placed.push(g);
+    return '<rect x="'+g.x0+'" y="'+g.y0+'" width="'+g.w+'" height="'+g.h+'" rx="6" fill="#081a33" stroke="rgba(150,190,240,.4)" stroke-width="1"/><text x="'+g.tx+'" y="'+g.ty+'" fill="'+fill+'" font-size="'+fpx+'" font-weight="700"'+(g.anchor==="middle"?' text-anchor="middle"':(g.anchor==="end"?' text-anchor="end"':""))+'>'+txt+'</text>';
   }
   var labels="";
   var smallRings=rings.filter(function(rm){ return R*(rm/radiusMi)<62; });
   var smallSeen=0;
   rings.forEach(function(rm){ var f=rm/radiusMi, rf=R*f; out+='<circle cx="'+C+'" cy="'+C+'" r="'+rf+'" fill="none" stroke="rgba(150,190,240,.3)"/>';
     if(rf>=62){
-      labels+=chip(C+5,C-rf+fs(24),rm+" mi",fs(13),"start","#a8d4f5");
+      /* usual spot: the top of the ring, as before. Alternates walk around
+         the ring itself (every ~20° of bearing, three anchorings each) so
+         the distance label stays on its own ring wherever it lands. */
+      var rfpx=fs(21), rcands=[[C+5,C-rf+rfpx+13,"start"]];
+      [20,-20,38,-38,58,-58,76,-76,96,-96,115,-115,135,-135,155,-155,180].forEach(function(ad){ var ar=ad*Math.PI/180, px=C+rf*Math.sin(ar), py=C-rf*Math.cos(ar)+Math.round(rfpx*0.36); rcands.push([px,py,"middle"]); rcands.push([px,py,"start"]); rcands.push([px,py,"end"]); });
+      labels+=placeChip(rcands,rm+" mi",rfpx,"#a8d4f5");
     } else {
       /* a small ring's label cannot sit at the top of its ring: that spot lands
          within a few pixels of the home star at the centre (in the 25-mile view
@@ -485,20 +524,24 @@ function skyChartSVG(planes,radiusMi,highlight){
          Small-ring labels move to the east side instead, their chips starting a
          clear gap east of the star's disc; with two small rings they stack below
          the centre line so they clear each other and the larger rings' labels. */
-      var baseY=smallRings.length>1?(smallSeen===0?C+16:C+50):C+5;
+      var baseY=smallRings.length>1?(smallSeen===0?C+18:C+58):C+10;
       smallSeen++;
-      labels+=chip(C+39,baseY,rm+" mi",fs(13),"start","#a8d4f5");
+      /* usual spot first (east of the star, stacked when there are two), then
+         lower east slots, then the mirrored west side — the first spot that
+         clears the star, the other chips and every plane marker wins. */
+      labels+=placeChip([[C+39,baseY,"start"],[C+39,baseY+42,"start"],[C-39,baseY,"end"],[C-39,baseY+42,"end"],[C+39,C+100,"start"],[C-39,C+100,"end"]],rm+" mi",fs(21),"#a8d4f5");
     } });
-  labels+=chip(C,fs(19),"N",fs(19),"middle","#eec25e");
-  labels+=chip(C,S-8,"S",fs(15),"middle","#dceeff");
-  labels+=chip(8,C+5,"W",fs(15),"start","#dceeff");
-  labels+=chip(S-22,C+5,"E",fs(15),"start","#dceeff");
+  var nfpx=fs(24), cfpx=fs(20);
+  labels+=placeChip([[C,nfpx+2,"middle"],[C-60,nfpx+2,"middle"],[C+60,nfpx+2,"middle"]],"N",nfpx,"#eec25e");
+  labels+=placeChip([[C,S-4,"middle"],[C-60,S-4,"middle"],[C+60,S-4,"middle"]],"S",cfpx,"#dceeff");
+  labels+=placeChip([[10,C+7,"start"],[10,C-42,"start"],[10,C+56,"start"]],"W",cfpx,"#dceeff");
+  labels+=placeChip([[S-10,C+7,"end"],[S-10,C-42,"end"],[S-10,C+56,"end"]],"E",cfpx,"#dceeff");
   /* the home star sits on its own opaque disc, drawn last of all: no marker or
      ring line can show through the star's open points, and the disc's edge is
      the clearance zone every other label keeps away from */
   labels+='<circle cx="'+C+'" cy="'+C+'" r="17" fill="#081a33" stroke="rgba(238,194,94,.5)" stroke-width="1"/>';
   labels+='<text x="'+C+'" y="'+(C+8)+'" fill="#eec25e" font-size="'+fs(24)+'" text-anchor="middle">★</text>';
-  planes.forEach(function(a,i){ var brg=(a._brg!=null?a._brg:bearing(HOME.lat,HOME.lon,a.lat,a.lon)); var br=brg*Math.PI/180; var fr=Math.min(1,(a._mi||0)/radiusMi); var x=C+Math.sin(br)*R*fr, y=C-Math.cos(br)*R*fr; var hl=(highlight!=null&&i===highlight);
+  planes.forEach(function(a,i){ var brg=(a._brg!=null?a._brg:bearing(HOME.lat,HOME.lon,a.lat,a.lon)); var br=brg*Math.PI/180; var fr=Math.min(1,(a._mi||0)/radiusMi); var x=pos[i].x, y=pos[i].y; var hl=(highlight!=null&&i===highlight);
     /* the dot is placed from the SAME stored values as every label — a._brg and a._mi,
        set once by renderPlanes — never from a gliding/dead-reckoned position and never
        from the plane's heading/track. (v9 placed dots from dead-reckoned positions
@@ -517,7 +560,7 @@ function skyChartSVG(planes,radiusMi,highlight){
     else { out+='<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="'+(hl?9:6.5)+'" fill="'+col+'" stroke="#071426" stroke-width="2"><title>'+esc((a.flight||"Plane")+" — "+fmtMi(lblMi)+" "+lblDir)+'</title></circle>'; }
     out+='</g>'; });
   out+=labels;
-  if(!planes.length) out+='<text x="'+C+'" y="'+(C+80)+'" fill="#dceeff" font-size="'+fs(14)+'" text-anchor="middle">No planes to plot right now</text>';
+  if(!planes.length) out+='<text x="'+C+'" y="'+(C+80)+'" fill="#dceeff" font-size="'+fs(18)+'" text-anchor="middle">No planes to plot right now</text>';
   out+="</svg>"; return out;
 }
 function sunPoint(){ var now=new Date(); var start=Date.UTC(now.getUTCFullYear(),0,0); var doy=Math.floor((now.getTime()-start)/864e5); var decl=-23.44*Math.cos((360/365)*(doy+10)*Math.PI/180); var utcH=now.getUTCHours()+now.getUTCMinutes()/60; var lon=180-utcH*15; if(lon>180)lon-=360; return {lat:decl,lon:lon}; }
