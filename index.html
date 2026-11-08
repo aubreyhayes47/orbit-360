@@ -24,7 +24,8 @@ body{ margin:0; overflow-x:hidden; background:var(--bg); color:var(--text); font
 @keyframes tw{ from{opacity:.35} to{opacity:1} }
 a{ color:var(--sky); } h1,h2,h3{ font-family:Georgia,"Iowan Old Style","Times New Roman",serif; font-weight:700; }
 .wrap{ max-width:900px; margin:0 auto; padding:0 18px calc(110px + env(safe-area-inset-bottom)); }
-.topbar{ position:sticky; top:0; z-index:50; background:var(--bg); border-bottom:1px solid var(--line); box-shadow:0 10px 18px rgba(3,8,18,.55); padding-top:env(safe-area-inset-top); }
+/* v18: the header is NOT sticky — it scrolls away with the page, so it can never cover the sky chart's N / ring / compass chips at any free-scroll position (scroll-margin only ever fixed anchor jumps, not free scrolling). HOME stays one scroll-up away: every view change already returns to the top via showView's scrollTo(0,0). */
+.topbar{ position:relative; z-index:50; background:var(--bg); border-bottom:1px solid var(--line); box-shadow:0 10px 18px rgba(3,8,18,.55); padding-top:env(safe-area-inset-top); }
 .view{ scroll-margin-top:calc(150px + env(safe-area-inset-top, 0px)); }
 .offlinebar{ display:none; max-width:900px; margin:14px auto 0; padding:16px 18px; border-radius:14px; border:2px solid rgba(255,210,127,.75); background:rgba(255,190,60,.14); color:#fff; font-weight:700; }
 .offlinebar.show{ display:block; }
@@ -313,7 +314,7 @@ button{ font-family:inherit; } :focus-visible{ outline:3px solid var(--gold); ou
     <p>5. LIVE means measured just now. CALCULATED means worked out from a known path.</p></div>
   <div class="card"><h3>Put Orbit on the Home Screen</h3><p>On an iPhone: open this page in Safari, tap Share (square with an up arrow), then Add to Home Screen. Orbit then opens full-screen from its own icon, like an app — no account or login, ever.</p><p>On Android: open in Chrome, tap ⋮, then Add to Home screen.</p></div>
   <div class="card"><h3>About the information</h3><p>Space facts checked against NASA/JPL, November 7, 2026. Weather live from the National Weather Service. Station position live from orbital data. Airplane positions live from adsb.fi's open feed, read first from a cached copy on this same site (aircraft.json) because the feed does not answer browsers directly — that cached-feed pattern is what most small personal trackers use. Orbit shows the feed's name, its time, and how old it is on every report, and never shows an old report as live. Weather is from the National Weather Service first, with Open-Meteo as a labelled backup. No location is tracked — Local Sky always looks at Bartlett.</p></div>
-  <p class="small" style="margin-top:14px">ORBIT 360 v17</p>
+  <p class="small" style="margin-top:14px">ORBIT 360 v18</p>
 </section>
 
 <div class="footer"><div class="rule"></div>ORBIT 360 — made with care for two very good grandparents.<br/>Open it, see what's overhead, look up.</div>
