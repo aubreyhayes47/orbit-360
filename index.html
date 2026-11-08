@@ -313,7 +313,7 @@ button{ font-family:inherit; } :focus-visible{ outline:3px solid var(--gold); ou
     <p>5. LIVE means measured just now. CALCULATED means worked out from a known path.</p></div>
   <div class="card"><h3>Put Orbit on the Home Screen</h3><p>On an iPhone: open this page in Safari, tap Share (square with an up arrow), then Add to Home Screen. Orbit then opens full-screen from its own icon, like an app — no account or login, ever.</p><p>On Android: open in Chrome, tap ⋮, then Add to Home screen.</p></div>
   <div class="card"><h3>About the information</h3><p>Space facts checked against NASA/JPL, November 7, 2026. Weather live from the National Weather Service. Station position live from orbital data. Airplane positions live from adsb.fi's open feed, read first from a cached copy on this same site (aircraft.json) because the feed does not answer browsers directly — that cached-feed pattern is what most small personal trackers use. Orbit shows the feed's name, its time, and how old it is on every report, and never shows an old report as live. Weather is from the National Weather Service first, with Open-Meteo as a labelled backup. No location is tracked — Local Sky always looks at Bartlett.</p></div>
-  <p class="small" style="margin-top:14px">ORBIT 360 v13</p>
+  <p class="small" style="margin-top:14px">ORBIT 360 v14</p>
 </section>
 
 <div class="footer"><div class="rule"></div>ORBIT 360 — made with care for two very good grandparents.<br/>Open it, see what's overhead, look up.</div>
@@ -449,10 +449,20 @@ function skyChartSVG(planes,radiusMi,highlight){
   out+='<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="'+stops[0]+'"/><stop offset=".55" stop-color="'+stops[1]+'"/><stop offset="1" stop-color="'+stops[2]+'"/></linearGradient></defs>';
   out+='<circle cx="'+C+'" cy="'+C+'" r="'+R+'" fill="url(#'+gid+')" stroke="rgba(150,190,240,.45)" stroke-width="1.5"/>';
   var rings=radiusMi>=50?[10,25,50]:[Math.round(radiusMi/3),Math.round(radiusMi*2/3),radiusMi];
-  rings.forEach(function(rm){ var f=rm/radiusMi; out+='<circle cx="'+C+'" cy="'+C+'" r="'+(R*f)+'" fill="none" stroke="rgba(150,190,240,.3)"/><text x="'+(C+5)+'" y="'+(C-R*f+fs(24))+'" fill="#a8d4f5" font-size="'+fs(13)+'" font-weight="700">'+rm+' mi</text>'; });
-  out+='<text x="'+C+'" y="'+fs(19)+'" fill="#eec25e" font-size="'+fs(19)+'" font-weight="700" text-anchor="middle">N</text>';
-  out+='<text x="'+C+'" y="'+(S-4)+'" fill="#dceeff" font-size="'+fs(15)+'" font-weight="700" text-anchor="middle">S</text><text x="8" y="'+(C+5)+'" fill="#dceeff" font-size="'+fs(15)+'" font-weight="700">W</text><text x="'+(S-22)+'" y="'+(C+5)+'" fill="#dceeff" font-size="'+fs(15)+'" font-weight="700">E</text>';
-  out+='<text x="'+C+'" y="'+(C+8)+'" fill="#eec25e" font-size="'+fs(24)+'" text-anchor="middle">★</text>';
+  /* ALL chart labels — the ring distances, the compass letters and the home star —
+     are collected in `labels` and drawn AFTER every plane marker (end of this
+     function), never before. A plane arrow, dot, trail or the nearest-plane ring
+     can sit anywhere on the chart, including exactly on top of a label; labels
+     emitted last paint over the markers instead of being hidden under them (v13:
+     a plane arrow on the outer ring covered the "2" of "25 mi", leaving "5 mi").
+     (A stroke halo was tried and dropped: a renderer that ignores paint-order
+     paints the stroke over the letter fill and darkens every label — drawn last
+     with their normal opaque fill, the labels are always fully visible.) */
+  var labels="";
+  rings.forEach(function(rm){ var f=rm/radiusMi; out+='<circle cx="'+C+'" cy="'+C+'" r="'+(R*f)+'" fill="none" stroke="rgba(150,190,240,.3)"/>'; labels+='<text x="'+(C+5)+'" y="'+(C-R*f+fs(24))+'" fill="#a8d4f5" font-size="'+fs(13)+'" font-weight="700">'+rm+' mi</text>'; });
+  labels+='<text x="'+C+'" y="'+fs(19)+'" fill="#eec25e" font-size="'+fs(19)+'" font-weight="700" text-anchor="middle">N</text>';
+  labels+='<text x="'+C+'" y="'+(S-4)+'" fill="#dceeff" font-size="'+fs(15)+'" font-weight="700" text-anchor="middle">S</text><text x="8" y="'+(C+5)+'" fill="#dceeff" font-size="'+fs(15)+'" font-weight="700">W</text><text x="'+(S-22)+'" y="'+(C+5)+'" fill="#dceeff" font-size="'+fs(15)+'" font-weight="700">E</text>';
+  labels+='<text x="'+C+'" y="'+(C+8)+'" fill="#eec25e" font-size="'+fs(24)+'" text-anchor="middle">★</text>';
   planes.forEach(function(a,i){ var brg=(a._brg!=null?a._brg:bearing(HOME.lat,HOME.lon,a.lat,a.lon)); var br=brg*Math.PI/180; var fr=Math.min(1,(a._mi||0)/radiusMi); var x=C+Math.sin(br)*R*fr, y=C-Math.cos(br)*R*fr; var hl=(highlight!=null&&i===highlight);
     /* the dot is placed from the SAME stored values as every label — a._brg and a._mi,
        set once by renderPlanes — never from a gliding/dead-reckoned position and never
@@ -471,6 +481,7 @@ function skyChartSVG(planes,radiusMi,highlight){
     if(tk!=null){ out+='<polygon points="0,-11 7.5,9 0,4.5 -7.5,9" transform="translate('+x.toFixed(1)+' '+y.toFixed(1)+') rotate('+tk+')" fill="'+col+'" stroke="'+(a._rare?"#ff9d8a":"#071426")+'" stroke-width="'+(a._rare?2.5:1.5)+'"><title>'+esc((a.flight||"Plane")+" — "+fmtMi(lblMi)+" "+lblDir)+'</title></polygon>'; }
     else { out+='<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="'+(hl?9:6.5)+'" fill="'+col+'" stroke="#071426" stroke-width="2"><title>'+esc((a.flight||"Plane")+" — "+fmtMi(lblMi)+" "+lblDir)+'</title></circle>'; }
     out+='</g>'; });
+  out+=labels;
   if(!planes.length) out+='<text x="'+C+'" y="'+(C+38)+'" fill="#dceeff" font-size="'+fs(14)+'" text-anchor="middle">No planes to plot right now</text>';
   out+="</svg>"; return out;
 }
@@ -497,7 +508,10 @@ function issMapSVG(lat,lon,arc){
   /* orbit arc ahead of the station */
   if(arc&&arc.length>1){ var apd="",prevX=null; arc.forEach(function(q,i){ var px=X(q[1]),py=Y(q[0]); var cmd=(i===0||(prevX!=null&&Math.abs(px-prevX)>W/2))?"M":"L"; apd+=cmd+px.toFixed(1)+" "+py.toFixed(1)+" "; prevX=px; }); out+='<path d="'+apd+'" fill="none" stroke="#eec25e" stroke-width="2.4" stroke-dasharray="9 6" stroke-opacity=".85"/>'; }
   var bx=clamp(X(HOME.lon),30,W-30), by=clamp(Y(HOME.lat),24,H-24);
-  out+='<text x="'+bx+'" y="'+(by-12)+'" fill="#fff" font-size="'+fs(20)+'" text-anchor="middle">★</text><text x="'+bx+'" y="'+(by+24)+'" fill="#fff" font-size="'+fs(12)+'" text-anchor="middle">Bartlett</text>';
+  /* the Bartlett star + label are held back and drawn AFTER the station dot:
+     when the station passes over Bartlett on the map, its dot must not cover
+     the home label (same draw-labels-last rule as the sky chart). */
+  var bartlettLbl='<text x="'+bx+'" y="'+(by-12)+'" fill="#fff" font-size="'+fs(20)+'" text-anchor="middle">★</text><text x="'+bx+'" y="'+(by+24)+'" fill="#fff" font-size="'+fs(12)+'" text-anchor="middle">Bartlett</text>';
   /* dot clamped just inside the map; label flips inward near any edge so it is never clipped */
   var dx=clamp(X(lon),14,W-14), dy=clamp(Y(lat),14,H-14);
   var anchor=(dx<110?"start":(dx>W-110?"end":"middle"));
@@ -505,6 +519,7 @@ function issMapSVG(lat,lon,arc){
   var ly=(dy<44?dy+34:dy-26);
   out+='<circle cx="'+dx+'" cy="'+dy+'" r="10" fill="#eec25e" stroke="#071426" stroke-width="3"/><circle cx="'+dx+'" cy="'+dy+'" r="20" fill="none" stroke="#eec25e" stroke-opacity=".5"/>';
   out+='<text x="'+lx+'" y="'+ly+'" fill="#eec25e" font-size="'+fs(13)+'" font-weight="700" text-anchor="'+anchor+'">SPACE STATION</text>';
+  out+=bartlettLbl;
   out+="</svg>"; return out;
 }
 /* ===== lists & details ===== */
