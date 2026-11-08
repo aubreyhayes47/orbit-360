@@ -314,7 +314,7 @@ button{ font-family:inherit; } :focus-visible{ outline:3px solid var(--gold); ou
     <p>5. LIVE means measured just now. CALCULATED means worked out from a known path.</p></div>
   <div class="card"><h3>Put Orbit on the Home Screen</h3><p>On an iPhone: open this page in Safari, tap Share (square with an up arrow), then Add to Home Screen. Orbit then opens full-screen from its own icon, like an app — no account or login, ever.</p><p>On Android: open in Chrome, tap ⋮, then Add to Home screen.</p></div>
   <div class="card"><h3>About the information</h3><p>Space facts checked against NASA/JPL, November 7, 2026. Weather live from the National Weather Service. Station position live from orbital data. Airplane positions live from adsb.fi's open feed, read first from a cached copy on this same site (aircraft.json) because the feed does not answer browsers directly — that cached-feed pattern is what most small personal trackers use. Orbit shows the feed's name, its time, and how old it is on every report, and never shows an old report as live. Weather is from the National Weather Service first, with Open-Meteo as a labelled backup. No location is tracked — Local Sky always looks at Bartlett.</p></div>
-  <p class="small" style="margin-top:14px">ORBIT 360 v21</p>
+  <p class="small" style="margin-top:14px">ORBIT 360 v22</p>
 </section>
 
 <div class="footer"><div class="rule"></div>ORBIT 360 — made with care for two very good grandparents.<br/>Open it, see what's overhead, look up.</div>
@@ -612,18 +612,64 @@ function issMapSVG(lat,lon,arc){
   /* orbit arc ahead of the station */
   if(arc&&arc.length>1){ var apd="",prevX=null; arc.forEach(function(q,i){ var px=X(q[1]),py=Y(q[0]); var cmd=(i===0||(prevX!=null&&Math.abs(px-prevX)>W/2))?"M":"L"; apd+=cmd+px.toFixed(1)+" "+py.toFixed(1)+" "; prevX=px; }); out+='<path d="'+apd+'" fill="none" stroke="#eec25e" stroke-width="2.4" stroke-dasharray="9 6" stroke-opacity=".85"/>'; }
   var bx=clamp(X(HOME.lon),30,W-30), by=clamp(Y(HOME.lat),24,H-24);
-  /* the Bartlett star + label are held back and drawn AFTER the station dot:
-     when the station passes over Bartlett on the map, its dot must not cover
-     the home label (same draw-labels-last rule as the sky chart). */
-  var bartlettLbl='<text x="'+bx+'" y="'+(by-12)+'" fill="#fff" font-size="'+fs(20)+'" text-anchor="middle">★</text><text x="'+bx+'" y="'+(by+24)+'" fill="#fff" font-size="'+fs(12)+'" text-anchor="middle">Bartlett</text>';
-  /* dot clamped just inside the map; label flips inward near any edge so it is never clipped */
+  /* dot clamped just inside the map */
   var dx=clamp(X(lon),14,W-14), dy=clamp(Y(lat),14,H-14);
-  var anchor=(dx<110?"start":(dx>W-110?"end":"middle"));
-  var lx=(anchor==="start"?dx+16:(anchor==="end"?dx-16:dx)); lx=clamp(lx,4,W-4);
-  var ly=(dy<44?dy+34:dy-26);
   out+='<circle cx="'+dx+'" cy="'+dy+'" r="10" fill="#eec25e" stroke="#071426" stroke-width="3"/><circle cx="'+dx+'" cy="'+dy+'" r="20" fill="none" stroke="#eec25e" stroke-opacity=".5"/>';
-  out+='<text x="'+lx+'" y="'+ly+'" fill="#eec25e" font-size="'+fs(13)+'" font-weight="700" text-anchor="'+anchor+'">SPACE STATION</text>';
-  out+=bartlettLbl;
+  /* the Bartlett star is held back and drawn AFTER the station dot: when the
+     station passes over Bartlett on the map, its dot must not cover the home
+     star (same draw-labels-last rule as the sky chart). */
+  out+='<text x="'+bx+'" y="'+(by-12)+'" fill="#fff" font-size="'+fs(20)+'" text-anchor="middle">★</text>';
+  /* v22: the map's words get the v19 sky-chart treatment — BIGGER, and PLACED
+     as opaque chips, not just drawn.
+     Bigger: this map's viewBox is twice the sky chart's width (680 vs 340),
+     so the same fs() size renders HALF as big on a phone — the old
+     fs(13) "SPACE STATION" and fs(12) "Bartlett" bare texts came out around
+     5pt on a 390px phone, far under the app's large-print floor, and with no
+     backing, so the orbit arc, the terminator and the land blocks showed
+     through the letters. The labels are now SPACE STATION fs(40) and
+     Bartlett fs(36): at 390px wide (map ≈334px on screen) that is ≈16pt and
+     ≈15pt — the same shelf as the sky chart's fs(21) ring labels (≈17pt).
+     Placed: each label is an OPAQUE CHIP (the v16/v19 system: a solid dark
+     rounded rect covering the label's whole box, letters and spaces alike,
+     text on top), tried at its usual spot first, then at alternate spots
+     around its marker, and takes the first whose box clears (a) every chip
+     already placed, (b) the station marker — a 26-unit circle around the
+     dot, covering its r20 ring plus margin, so the gold dot and ring can
+     NEVER slip under a chip and the marker stays fully visible — and
+     (c) the Bartlett star. Chips still draw last, so no arc, terminator or
+     land block ever paints over a word; and because a chip only lands where
+     no marker sits, no word ever hides the station or the star. If every
+     spot were taken, a chip falls back to its usual spot, as v19 behaves. */
+  function chipGeom(x,y,txt,fpx,anchor){
+    var w=Math.ceil(txt.length*fpx*0.64)+18, h=fpx+11;
+    var x0=anchor==="middle"?Math.round(x-w/2):(anchor==="end"?Math.round(x-w+9):Math.round(x-9));
+    var y0=Math.round(y-fpx-4);
+    if(x0<1)x0=1; if(x0+w>W-1)x0=W-1-w; if(y0<1)y0=1; if(y0+h>H-1)y0=H-1-h;
+    var tx=anchor==="middle"?x0+w/2:(anchor==="end"?x0+w-9:x0+9);
+    return {x0:x0,y0:y0,w:w,h:h,tx:tx,ty:y0+fpx+4,anchor:anchor};
+  }
+  var placed=[];
+  var obstacles=[{x:dx,y:dy,r:26},{x:bx,y:by-20,r:15}];
+  function chipFree(g){
+    var i,b,dx2,dy2;
+    for(i=0;i<placed.length;i++){ b=placed[i]; if(g.x0-3<b.x0+b.w&&b.x0-3<g.x0+g.w&&g.y0-3<b.y0+b.h&&b.y0-3<g.y0+g.h) return false; }
+    for(i=0;i<obstacles.length;i++){ b=obstacles[i]; dx2=Math.max(g.x0-b.x,0,b.x-(g.x0+g.w)); dy2=Math.max(g.y0-b.y,0,b.y-(g.y0+g.h)); if(dx2*dx2+dy2*dy2<b.r*b.r) return false; }
+    return true;
+  }
+  function placeChip(cands,txt,fpx,fill){
+    var g=null,i,t;
+    for(i=0;i<cands.length;i++){ t=chipGeom(cands[i][0],cands[i][1],txt,fpx,cands[i][2]); if(chipFree(t)){ g=t; break; } if(!g)g=t; }
+    placed.push(g);
+    return '<rect x="'+g.x0+'" y="'+g.y0+'" width="'+g.w+'" height="'+g.h+'" rx="6" fill="#081a33" stroke="rgba(150,190,240,.4)" stroke-width="1"/><text x="'+g.tx+'" y="'+g.ty+'" fill="'+fill+'" font-size="'+fpx+'" font-weight="700"'+(g.anchor==="middle"?' text-anchor="middle"':(g.anchor==="end"?' text-anchor="end"':""))+'>'+txt+'</text>';
+  }
+  var sfpx=fs(40), bfpx=fs(36);
+  var midY=function(fpx){ return Math.round(fpx*0.36); };
+  /* SPACE STATION first (it is the page's subject): usual spot above its dot,
+     then below, the sides, the diagonals, then further above/below. */
+  out+=placeChip([[dx,dy-33,"middle"],[dx,dy+sfpx+30,"middle"],[dx+35,dy+midY(sfpx),"start"],[dx-35,dy+midY(sfpx),"end"],[dx+35,dy+sfpx+30,"start"],[dx-35,dy+sfpx+30,"end"],[dx+35,dy-33,"start"],[dx-35,dy-33,"end"],[dx,dy+sfpx+30+sfpx+18,"middle"],[dx,dy-33-sfpx-18,"middle"]],"SPACE STATION",sfpx,"#eec25e");
+  /* Bartlett second: usual spot below the home point (under its star), then
+     below-right/left, above the star, the sides, then further below. */
+  out+=placeChip([[bx,by+bfpx+16,"middle"],[bx+28,by+bfpx+16,"start"],[bx-28,by+bfpx+16,"end"],[bx,by-47,"middle"],[bx+28,by-47,"start"],[bx-28,by-47,"end"],[bx+35,by+midY(bfpx),"start"],[bx-35,by+midY(bfpx),"end"],[bx,by+bfpx+16+bfpx+18,"middle"]],"Bartlett",bfpx,"#fff");
   out+="</svg>"; return out;
 }
 /* ===== lists & details ===== */
