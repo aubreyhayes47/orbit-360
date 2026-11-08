@@ -314,7 +314,7 @@ button{ font-family:inherit; } :focus-visible{ outline:3px solid var(--gold); ou
     <p>5. LIVE means measured just now. CALCULATED means worked out from a known path.</p></div>
   <div class="card"><h3>Put Orbit on the Home Screen</h3><p>On an iPhone: open this page in Safari, tap Share (square with an up arrow), then Add to Home Screen. Orbit then opens full-screen from its own icon, like an app — no account or login, ever.</p><p>On Android: open in Chrome, tap ⋮, then Add to Home screen.</p></div>
   <div class="card"><h3>About the information</h3><p>Space facts checked against NASA/JPL, November 7, 2026. Weather live from the National Weather Service. Station position live from orbital data. Airplane positions live from adsb.fi's open feed, read first from a cached copy on this same site (aircraft.json) because the feed does not answer browsers directly — that cached-feed pattern is what most small personal trackers use. Orbit shows the feed's name, its time, and how old it is on every report, and never shows an old report as live. Weather is from the National Weather Service first, with Open-Meteo as a labelled backup. No location is tracked — Local Sky always looks at Bartlett.</p></div>
-  <p class="small" style="margin-top:14px">ORBIT 360 v23</p>
+  <p class="small" style="margin-top:14px">ORBIT 360 v24</p>
 </section>
 
 <div class="footer"><div class="rule"></div>ORBIT 360 — made with care for two very good grandparents.<br/>Open it, see what's overhead, look up.</div>
@@ -514,6 +514,72 @@ function skyChartSVG(planes,radiusMi,highlight){
     return '<rect x="'+g.x0+'" y="'+g.y0+'" width="'+g.w+'" height="'+g.h+'" rx="6" fill="#081a33" stroke="rgba(150,190,240,.4)" stroke-width="1"/><text x="'+g.tx+'" y="'+g.ty+'" fill="'+fill+'" font-size="'+fpx+'" font-weight="700"'+(g.anchor==="middle"?' text-anchor="middle"':(g.anchor==="end"?' text-anchor="end"':""))+'>'+txt+'</text>';
   }
   var labels="";
+  /* v24: the NEAREST plane gets a VISIBLE label on the chart itself. Up to
+     v23 the nearest plane's direction/distance existed on the chart only as
+     a <title> inside its arrow (tooltip / screen-reader text — the v23
+     probe could match it in the accessible text but could not SEE any label
+     beside the arrows in any framing; the only visible nearest text was the
+     caption UNDER the chart). The label is now an opaque chip in the same
+     placed-chip system as the rings and compass letters: it is placed FIRST,
+     before them, so it only ever contends with the things that cannot move —
+     the home star (a 19-unit obstacle at the centre) and every plane marker
+     (16 units, 22 around the nearest plane itself, so its gold ring and
+     arrow stay fully visible) — and the ring and compass chips, which have
+     alternate spots of their own, then route around it. Its words come from
+     the same stored a._mi / a._brg the list, the caption and the <title>
+     use — the distance is a._mi to one decimal and the direction
+     abbreviation is the same 8-point sectoring as a._dir (compass()),
+     shortened to two letters only so the chip fits the chart at large-print
+     size; the full word is in the caption below the chart. */
+  if(nearI>=0&&planes[nearI]){
+    var na24=planes[nearI];
+    var nMi24=(na24._mi!=null?na24._mi:nearD);
+    var nBrg24=(na24._brg!=null?na24._brg:bearing(HOME.lat,HOME.lon,na24.lat,na24.lon));
+    var nAbbr24=["N","NE","E","SE","S","SW","W","NW"][Math.round((((nBrg24%360)+360)%360)/45)%8];
+    var nTxt24="NEAREST: "+nMi24.toFixed(1)+" mi "+nAbbr24;
+    var np24=pos[nearI], nfpx24=fs(19), nMid24=Math.round(nfpx24*0.36);
+    var nCands24=[[np24.x,np24.y-34,"middle"],[np24.x,np24.y+nfpx24+40,"middle"],[np24.x+52,np24.y+nMid24,"start"],[np24.x-52,np24.y+nMid24,"end"],[np24.x+52,np24.y+nfpx24+40,"start"],[np24.x-52,np24.y+nfpx24+40,"end"],[C,S-46,"middle"],[C,nfpx24+46,"middle"],[16,S-46,"start"],[S-16,S-46,"end"],[16,nfpx24+46,"start"],[S-16,nfpx24+46,"end"],[C,C+94,"middle"],[C,C-80,"middle"],[C,124,"middle"],[C,238,"middle"]];
+    var nDone24=false, ni24, ng24;
+    /* the four compass chips have only three candidate spots each, all in
+       their own edge band — if this wide chip took a compass chip's usual
+       spot, that chip's every alternate would clash and its fallback would
+       paint over this label's words. So the compass chips' usual spots are
+       reserved as extra obstacles for THIS chip only (the ring chips need
+       no reservation: they carry fifty-odd alternates each). */
+    var nRes24=[{x0:C-22,y0:0,w:44,h:44},{x0:C-20,y0:S-42,w:40,h:42},{x0:0,y0:C-20,w:38,h:40},{x0:S-38,y0:C-20,w:38,h:40}];
+    function nFree24(g){ if(!chipFree(g))return false; for(var ri=0;ri<nRes24.length;ri++){ var b=nRes24[ri]; if(g.x0-3<b.x0+b.w&&b.x0-3<g.x0+g.w&&g.y0-3<b.y0+b.h&&b.y0-3<g.y0+g.h) return false; } return true; }
+    for(ni24=0;ni24<nCands24.length;ni24++){ ng24=chipGeom(nCands24[ni24][0],nCands24[ni24][1],nTxt24,nfpx24,nCands24[ni24][2]); if(nFree24(ng24)){ placed.push(ng24); labels+='<rect x="'+ng24.x0+'" y="'+ng24.y0+'" width="'+ng24.w+'" height="'+ng24.h+'" rx="6" fill="#081a33" stroke="rgba(238,194,94,.65)" stroke-width="1.2"/><text x="'+ng24.tx+'" y="'+ng24.ty+'" fill="#eec25e" font-size="'+nfpx24+'" font-weight="700"'+(ng24.anchor==="middle"?' text-anchor="middle"':(ng24.anchor==="end"?' text-anchor="end"':""))+'>'+nTxt24+'</text>'; nDone24=true; break; } }
+    if(!nDone24){
+      /* crowded chart (a dozen-plus planes can leave no full-width band
+         free): fall back to the same words on TWO lines — "NEAREST" over
+         the distance/direction — in a narrower chip of the same system,
+         tried around the nearest plane first, then on a fine grid across
+         the whole chart. It uses the same chipFree checks, so it still
+         clears the star and every marker; only if even the grid finds no
+         spot does the single-line chip take its usual spot, as v19 chips
+         behaved on impossible charts. */
+      var line2_24=nMi24.toFixed(1)+" mi "+nAbbr24;
+      var f2=fs(18), w2=Math.ceil(Math.max(7,line2_24.length)*f2*0.64)+18, h2=2*f2+15, g2=null;
+      var ctr2=[[np24.x+64,np24.y],[np24.x-64,np24.y],[np24.x,np24.y-56],[np24.x,np24.y+56],[np24.x+60,np24.y-50],[np24.x-60,np24.y-50],[np24.x+60,np24.y+50],[np24.x-60,np24.y+50],[62,62],[C,60],[S-62,62],[62,C],[S-62,C],[62,S-60],[C,S-60],[S-62,S-60],[C,96],[C,S-96],[96,120],[S-96,120],[96,228],[S-96,228],[C,132],[C,214]];
+      for(var gy2=40;gy2<=S-40;gy2+=17)for(var gx2=40;gx2<=S-40;gx2+=17)ctr2.push([gx2,gy2]);
+      for(ni24=0;ni24<ctr2.length;ni24++){ var cx2=Math.max(1,Math.min(S-1-w2,Math.round(ctr2[ni24][0]-w2/2))), cy2=Math.max(1,Math.min(S-1-h2,Math.round(ctr2[ni24][1]-h2/2))); var t2={x0:cx2,y0:cy2,w:w2,h:h2}; if(nFree24(t2)){ g2=t2; break; } }
+      if(!g2){
+        /* tier 3, for the most packed charts (a dozen planes in XL with the
+           nearest dead centre can leave no fs(18) window): the same two
+           lines at fs(16), with the clearance around ORDINARY markers
+           relaxed 16 → 12 units — an arrow glyph is 11 units, so every
+           arrow itself still clears; only a faint trail's first steps may
+           pass under the chip's edge. The star, the nearest plane's 22 and
+           the compass reservations are NOT relaxed. */
+        var f3=fs(16), w3=Math.ceil(Math.max(7,line2_24.length)*f3*0.64)+18, h3=2*f3+15;
+        var obs3=obstacles.map(function(o,oi){ return {x:o.x,y:o.y,r:(oi===0||oi===nearI+1)?o.r:Math.max(12,o.r-4)}; });
+        function free3(g){ var i,b,dx,dy; for(i=0;i<nRes24.length;i++){ b=nRes24[i]; if(g.x0-3<b.x0+b.w&&b.x0-3<g.x0+g.w&&g.y0-3<b.y0+b.h&&b.y0-3<g.y0+g.h) return false; } for(i=0;i<obs3.length;i++){ b=obs3[i]; dx=Math.max(g.x0-b.x,0,b.x-(g.x0+g.w)); dy=Math.max(g.y0-b.y,0,b.y-(g.y0+g.h)); if(dx*dx+dy*dy<b.r*b.r) return false; } return true; }
+        for(ni24=0;ni24<ctr2.length;ni24++){ var cx3=Math.max(1,Math.min(S-1-w3,Math.round(ctr2[ni24][0]-w3/2))), cy3=Math.max(1,Math.min(S-1-h3,Math.round(ctr2[ni24][1]-h3/2))); var t3={x0:cx3,y0:cy3,w:w3,h:h3}; if(free3(t3)){ g2=t3; f2=f3; break; } }
+      }
+      if(g2){ placed.push(g2); labels+='<rect x="'+g2.x0+'" y="'+g2.y0+'" width="'+g2.w+'" height="'+g2.h+'" rx="6" fill="#081a33" stroke="rgba(238,194,94,.65)" stroke-width="1.2"/><text x="'+(g2.x0+g2.w/2)+'" y="'+(g2.y0+f2+3)+'" fill="#eec25e" font-size="'+f2+'" font-weight="700" text-anchor="middle">NEAREST</text><text x="'+(g2.x0+g2.w/2)+'" y="'+(g2.y0+2*f2+6)+'" fill="#eec25e" font-size="'+f2+'" font-weight="700" text-anchor="middle">'+line2_24+'</text>'; nDone24=true; }
+    }
+    if(!nDone24) labels+=placeChip([nCands24[0]],nTxt24,nfpx24,"#eec25e");
+  }
   var smallRings=rings.filter(function(rm){ return R*(rm/radiusMi)<62; });
   var smallSeen=0;
   rings.forEach(function(rm){ var f=rm/radiusMi, rf=R*f; out+='<circle cx="'+C+'" cy="'+C+'" r="'+rf+'" fill="none" stroke="rgba(150,190,240,.3)"/>';
@@ -597,8 +663,31 @@ function issMapSVG(lat,lon,arc){
   out+='<rect width="'+W+'" height="'+H+'" fill="#0a2247"/>';
   for(var gx=0;gx<=360;gx+=60)out+='<line x1="'+(gx/360*W)+'" y1="0" x2="'+(gx/360*W)+'" y2="'+H+'" stroke="rgba(150,190,240,.14)"/>';
   for(var gy=0;gy<=180;gy+=30)out+='<line x1="0" y1="'+(gy/180*H)+'" x2="'+W+'" y2="'+(gy/180*H)+'" stroke="rgba(150,190,240,.14)"/>';
-  var blocks=[[-168,66,-52,15],[-80,10,-35,-55],[-10,36,32,70],[-18,-35,52,32],[45,5,180,75],[68,-12,142,22],[113,-39,154,-11]];
-  blocks.forEach(function(b){var x1=X(b[0]),x2=X(b[2]),y1=Y(b[3]),y2=Y(b[1]);out+='<rect x="'+x1+'" y="'+y1+'" width="'+(x2-x1)+'" height="'+(y2-y1)+'" fill="rgba(110,190,125,.52)" stroke="rgba(195,240,205,.95)" stroke-width="2" rx="10"/>';});
+  /* v24: simplified but RECOGNISABLE continent outlines — [lon,lat] point
+     lists plotted with this map's own X/Y equirectangular projection. v23
+     drew seven rounded rectangles and a reader could not tell North America
+     from Africa (two of the rectangles even had negative height and never
+     painted at all). The fill and bright outline are v23's, unchanged; what
+     changed is the silhouettes: Alaska, Florida and the Hudson Bay notch on
+     North America; South America's Brazil bulge tapering to a point;
+     Africa's west bulge and eastern Horn, with Madagascar; Eurasia with the
+     India, Arabia and South-East Asia peninsulas, Britain and Greenland as
+     islands; Australia with Cape York and the Gulf of Carpentaria; New
+     Zealand and an Antarctica shore strip along the bottom edge. */
+  var lands=[
+    [[-168,66],[-166,60],[-161,57],[-156,55],[-150,57],[-146,60],[-141,62],[-136,57],[-131,54],[-127,50],[-124,46],[-124,40],[-121,34],[-117,32],[-113,29],[-109,23],[-105,20],[-101,17],[-96,16],[-92,15],[-87,13],[-83,10],[-79,9],[-83,10],[-86,15],[-88,16],[-90,21],[-91,19],[-94,18],[-97,22],[-97,26],[-94,29],[-90,29],[-86,29],[-84,30],[-82,27],[-81,24],[-79,26],[-80,30],[-81,32],[-79,34],[-76,36],[-74,40],[-70,42],[-66,45],[-61,46],[-65,50],[-60,52],[-64,58],[-68,58],[-74,62],[-77,61],[-79,56],[-80,52],[-84,51],[-87,55],[-89,60],[-92,64],[-95,66],[-102,68],[-110,68],[-120,70],[-130,70],[-140,70],[-150,71],[-158,71],[-166,68]],
+    [[-77,8],[-72,12],[-68,11],[-62,10],[-55,6],[-51,4],[-50,0],[-44,-3],[-38,-5],[-35,-8],[-39,-13],[-39,-17],[-41,-23],[-48,-26],[-49,-29],[-53,-33],[-57,-38],[-62,-41],[-65,-45],[-65,-49],[-67,-52],[-68,-55],[-71,-54],[-73,-50],[-73,-44],[-73,-37],[-72,-30],[-70,-23],[-70,-18],[-75,-15],[-77,-11],[-78,-7],[-80,-4],[-81,0],[-80,3],[-77,6]],
+    [[-6,35],[-9,31],[-13,28],[-16,24],[-17,20],[-17,16],[-16,12],[-13,8],[-8,5],[-3,5],[2,6],[6,4],[9,-1],[12,-6],[13,-12],[12,-17],[13,-21],[15,-27],[17,-32],[19,-34],[20,-35],[26,-34],[30,-30],[32,-28],[35,-23],[36,-19],[37,-15],[39,-11],[40,-6],[41,-1],[46,2],[51,10],[48,11],[43,12],[40,15],[38,21],[35,28],[34,29],[32,31],[30,31],[25,32],[20,32],[15,32],[11,33],[10,37],[5,37],[0,36],[-2,35]],
+    [[43,-17],[45,-16],[49,-14],[50,-18],[47,-23],[45,-25],[44,-21],[43,-19]],
+    [[-9,37],[-9,43],[-4,44],[-1,46],[-5,48],[-1,50],[2,51],[7,54],[8,57],[11,58],[10,59],[5,59],[5,61],[8,63],[12,65],[16,68],[22,70],[28,71],[35,69],[42,68],[50,69],[60,69],[68,72],[75,73],[82,74],[90,75],[98,77],[105,77],[112,74],[120,73],[128,72],[136,72],[144,72],[152,71],[160,70],[168,68],[176,66],[178,64],[172,60],[165,60],[161,58],[158,52],[155,50],[148,52],[142,54],[141,48],[137,45],[133,43],[129,41],[126,38],[122,37],[120,33],[121,29],[117,25],[112,22],[109,19],[108,14],[109,11],[106,8],[103,7],[101,3],[99,7],[98,11],[97,16],[94,17],[92,14],[90,22],[87,21],[84,18],[81,15],[79,12],[77,8],[75,13],[73,18],[72,20],[69,22],[66,25],[61,25],[57,26],[51,29],[49,30],[50,27],[54,25],[56,26],[58,23],[57,19],[54,16],[49,14],[45,12],[43,12],[41,15],[39,20],[37,24],[35,28],[34,31],[36,36],[32,36],[30,37],[27,37],[24,38],[23,36],[22,38],[19,40],[18,40],[16,38],[15,40],[13,42],[11,44],[8,44],[6,43],[3,42],[1,39],[-1,37],[-5,36]],
+    [[-5,50],[-2,51],[1,51],[1,53],[-1,55],[-2,57],[-4,58],[-6,57],[-8,54],[-6,52]],
+    [[-46,60],[-44,60],[-41,63],[-38,66],[-33,68],[-27,69],[-21,70],[-19,73],[-22,76],[-30,79],[-42,80],[-52,79],[-57,76],[-58,72],[-56,68],[-54,64],[-52,61]],
+    [[114,-22],[113,-24],[114,-28],[115,-31],[115,-34],[118,-35],[122,-34],[126,-32],[130,-32],[132,-32],[134,-33],[136,-35],[138,-36],[139,-37],[141,-38],[144,-38],[147,-39],[149,-37],[151,-34],[153,-30],[153,-27],[152,-25],[150,-22],[148,-20],[146,-19],[144,-16],[142,-13],[142,-11],[141,-13],[141,-16],[140,-18],[137,-16],[136,-13],[136,-12],[133,-11],[131,-12],[129,-13],[126,-14],[123,-16],[120,-19],[117,-20],[114,-21]],
+    [[145,-41],[148,-41],[148,-43],[146,-44],[145,-42]],
+    [[167,-46],[169,-44],[171,-43],[173,-41],[174,-39],[176,-37],[178,-38],[176,-40],[174,-41],[172,-43],[170,-44],[168,-46]],
+    [[-180,-76],[-150,-74],[-120,-77],[-90,-74],[-60,-76],[-30,-73],[0,-75],[30,-73],[60,-76],[90,-74],[120,-77],[150,-74],[180,-76],[180,-90],[-180,-90]]
+  ];
+  lands.forEach(function(poly){ var d=""; poly.forEach(function(q,i){ d+=(i?"L":"M")+X(q[0]).toFixed(1)+" "+Y(q[1]).toFixed(1)+" "; }); out+='<path d="'+d+'Z" fill="rgba(110,190,125,.52)" stroke="rgba(195,240,205,.95)" stroke-width="2" stroke-linejoin="round"/>'; });
   /* day/night terminator: shade the night side, dashed line on the boundary */
   var sp=sunPoint(), p=Math.PI/180, sla=sp.lat*p, slo=sp.lon*p;
   var S=[Math.cos(sla)*Math.cos(slo),Math.cos(sla)*Math.sin(slo),Math.sin(sla)];
