@@ -157,7 +157,7 @@ button{ font-family:inherit; } :focus-visible{ outline:3px solid var(--gold); ou
       <button class="bigcard" type="button" data-goto="weather"><span class="bn" id="homeWxBig">—</span><span class="bu">°F</span><div class="bl" id="homeWxLabel">Tonight's weather</div><div class="bs"><span id="homeTonight">…</span> · <span id="homeTonightSub">Checking the sky…</span></div></button>
       <button class="bigcard" type="button" data-goto="sats"><span class="bn" id="homeIssAlt">—</span><span class="bu">MI UP</span><div class="bl">Space Station</div><div class="bs"><span id="homeIssPos">…</span> · <span id="homeIssSub">Getting live position…</span></div></button>
     </div>
-    <p class="statusline" style="margin-top:12px"><span class="dot wait" id="homeDot"></span><span id="homeStatus" aria-live="polite">Checking each tracker — each one answers, or says it could not, within about 8 seconds.</span></p>
+    <p class="statusline" style="margin-top:12px"><span class="dot wait" id="homeDot"></span><span id="homeStatus" aria-live="polite">Checking each tracker — each one answers, or says it could not, within about 20 seconds.</span></p>
     <div class="freshrow" aria-label="When each tracker last updated" aria-live="polite">
       <span id="freshPlanes">✈ Planes: waiting…</span>
       <span id="freshIss">🛰 Station: waiting…</span>
@@ -314,7 +314,7 @@ button{ font-family:inherit; } :focus-visible{ outline:3px solid var(--gold); ou
     <p>5. LIVE means measured just now. CALCULATED means worked out from a known path.</p></div>
   <div class="card"><h3>Put Orbit on the Home Screen</h3><p>On an iPhone: open this page in Safari, tap Share (square with an up arrow), then Add to Home Screen. Orbit then opens full-screen from its own icon, like an app — no account or login, ever.</p><p>On Android: open in Chrome, tap ⋮, then Add to Home screen.</p></div>
   <div class="card"><h3>About the information</h3><p>Space facts checked against NASA/JPL, November 7, 2026. Weather live from the National Weather Service. Station position live from orbital data. Airplane positions live from adsb.fi's open feed, read first from a cached copy on this same site (aircraft.json) because the feed does not answer browsers directly — that cached-feed pattern is what most small personal trackers use. Orbit shows the feed's name, its time, and how old it is on every report, and never shows an old report as live. Weather is from the National Weather Service first, with Open-Meteo as a labelled backup. No location is tracked — Local Sky always looks at Bartlett.</p></div>
-  <p class="small" style="margin-top:14px">ORBIT 360 v25</p>
+  <p class="small" style="margin-top:14px">ORBIT 360 v26</p>
 </section>
 
 <div class="footer"><div class="rule"></div>ORBIT 360 — made with care for two very good grandparents.<br/>Open it, see what's overhead, look up.</div>
@@ -894,15 +894,15 @@ function updateHomeStatus(){
   if(oks>0){ var su=$("stripUpdated"); if(su)su.textContent=nowTime(); }
 }
 function setTrack(k,v){ track[k]=v; updateHomeStatus(); }
-/* belt-and-braces watchdog: checked every 5s — any tracker still "checking" is declared failed in plain English, so no loading state anywhere can persist past ~10 seconds */
+/* belt-and-braces watchdog: checked every 5s — any tracker still "checking" is declared failed in plain English, so no loading state can persist past its fetch window — about 10 seconds for the station and weather, about 21 seconds for planes */
 setInterval(function(){
   ["planes","iss","wx"].forEach(function(k){
     if(track[k]!=="wait")return;
     /* planes get their full fetch window: fetchSky resolves or fails on its own
-       8-second deadline, so the watchdog must not declare failure mid-flight —
+       20-second deadline, so the watchdog must not declare failure mid-flight —
        doing so stamped "didn't answer" over the Home count and caption while the
        same fetch was still legitimately on its way to updating both views */
-    if(k==="planes"&&typeof skyLastFetchAt!=="undefined"&&skyLastFetchAt&&Date.now()-skyLastFetchAt<9500)return;
+    if(k==="planes"&&typeof skyLastFetchAt!=="undefined"&&skyLastFetchAt&&Date.now()-skyLastFetchAt<21000)return;
     if(k==="planes"){ var pc=$("homePlaneCount"); if(pc)pc.textContent="—"; var ps=$("homePlaneSub"); if(ps)ps.textContent="Planes: the live feed didn't answer — tap REFRESH to try again"; var nc=$("nearestCap"); if(nc)nc.textContent="Nearest plane: the feed didn't answer — tap REFRESH EVERYTHING to try again."; setFresh("freshPlanes","✈ Planes: didn't answer — tap REFRESH"); }
     if(k==="iss"){ var hs2=$("homeIssSub"); if(hs2)hs2.textContent="Station: the live feed didn't answer — tap REFRESH to try again"; setFresh("freshIss","🛰 Station: didn't answer — tap REFRESH"); }
     if(k==="wx"){ setFresh("freshWx","🌦 Weather: didn't answer — tap REFRESH"); var hl=$("homeWxLine"); if(hl&&/Getting/.test(hl.textContent))hl.textContent="Weather: the forecast feeds didn't answer — tap REFRESH EVERYTHING to try again."; }
@@ -1268,34 +1268,37 @@ function relayChain(){
   var nm=Math.max(1,Math.round(skyRadiusMi/1.15078)); var raw="https://opendata.adsb.fi/api/v2/lat/35.23/lon/-89.82/dist/"+nm; var enc=encodeURIComponent(raw);
   var urls=["https://api.allorigins.win/raw?url="+enc,"https://api.codetabs.com/v1/proxy?quest="+enc];
   var p=Promise.reject(new Error("start"));
-  urls.forEach(function(u){ p=p.catch(function(){ return fetchTimeout(u,3500).then(function(r){ if(!r.ok)throw new Error("bad"); return r.json(); }); }); });
-  /* hard cap on the whole backup phase: 4.5 seconds, then it reports failure */
-  return Promise.race([p,new Promise(function(_,rej){ setTimeout(function(){rej(new Error("relay deadline"));},4500); })]);
+  urls.forEach(function(u){ p=p.catch(function(){ return fetchTimeout(u,8000).then(function(r){ if(!r.ok)throw new Error("bad"); return r.json(); }); }); });
+  /* hard cap on the whole backup phase: 10 seconds, then it reports failure */
+  return Promise.race([p,new Promise(function(_,rej){ setTimeout(function(){rej(new Error("relay deadline"));},10000); })]);
 }
 function fetchSky(){
   var my=++gen.planes; skyLastFetchAt=Date.now(); setTrack("planes","wait");
-  /* absolute deadline: whatever the fetches do, Planes resolves — success or honest failure — within 8 seconds, cold load included */
-  setTimeout(function(){ if(my===gen.planes&&track.planes==="wait") skyFail("Didn't answer within 8 seconds"); },8000);
+  /* absolute deadline: whatever the fetches do, Planes resolves — success or honest failure — within 20 seconds, cold load included. A relay that lands after the deadline still updates the page with live data, since the data is fresh when it arrives. */
+  setTimeout(function(){ if(my===gen.planes&&track.planes==="wait") skyFail("Didn't answer within 20 seconds"); },20000);
   var dot=$("skyDot"),st=$("skyStatusText"); if(dot)dot.className="dot wait";
-  if(st)st.textContent="Checking the cached sky feed first (answers within about 5 seconds)…";
+  if(st)st.textContent="Checking the cached sky feed first (answers within about 8 seconds)…";
   var vlW=$("verifyLookLine"); if(vlW)vlW.textContent="Checking the live feed now — plane #1's own gold line will be copied here, word for word, as soon as the list below loads.";
   setFeedMeta("adsb.fi via aircraft.json (this site)","Feed time: checking…","Checking cached feed first","good");
   var cd=$("skyCooldown"); if(cd)cd.textContent="";
-  /* 1) same-origin cached feed FIRST — no CORS, no relay, 5s cap */
-  fetchTimeout("aircraft.json",3500,{cache:"no-store"}).then(function(r){ if(!r.ok)throw new Error("no cache"); return r.json(); }).then(function(d){
-    if(my!==gen.planes)return;
-    if(!d||!Array.isArray(d.ac))throw new Error("bad cache shape");
-    var fetched=d.fetched_at?new Date(d.fetched_at):(d.now?new Date(d.now<1e12?d.now*1000:d.now):null);
-    /* an unparseable feed time is stale, never fresh: it cannot prove the snapshot is new */
-    if(!fetched||isNaN(fetched.getTime()))throw {stale:true,ageMin:Infinity,fetched:null,unparseable:true};
-    var ageMin=(Date.now()-fetched.getTime())/60000;
-    if(ageMin>10)throw {stale:true,ageMin:ageMin,fetched:fetched};
-    lastFeedMeta={mode:"cache",when:fetched};
-    skySuccess(d,{when:fetched,ageMin:Math.max(0,ageMin),sourceLabel:(d.source||"adsb.fi v3")+" · cached feed (aircraft.json)",short:"cached feed",modeLabel:"Cached feed — tried first ✓",modeClass:ageMin>=5?"warn":"good"});
-  }).catch(function(err){
+  /* 1) same-origin cached feed FIRST — no CORS, no relay, 8s cap */
+  function tryCache(again){
+    return fetchTimeout("aircraft.json",8000,{cache:"no-store"}).then(function(r){ if(!r.ok)throw new Error("no cache"); return r.json(); }).then(function(d){
+      if(!d||!Array.isArray(d.ac))throw new Error("bad cache shape");
+      var fetched=d.fetched_at?new Date(d.fetched_at):(d.now?new Date(d.now<1e12?d.now*1000:d.now):null);
+      if(!fetched||isNaN(fetched.getTime()))throw {stale:true,ageMin:Infinity,fetched:null,unparseable:true};
+      var ageMin=(Date.now()-fetched.getTime())/60000;
+      if(ageMin>10)throw {stale:true,ageMin:ageMin,fetched:fetched};
+      return {d:d,fetched:fetched,ageMin:ageMin};
+    }).catch(function(err){
+      if(again&&!(err&&err.stale)){ if(st)st.textContent="The cached feed didn't answer the first time — trying it once more…"; return tryCache(false); }
+      throw err;
+    });
+  }
+  tryCache(true).then(function(res){ if(my!==gen.planes)return; var d=res.d, fetched=res.fetched, ageMin=res.ageMin; lastFeedMeta={mode:"cache",when:fetched}; skySuccess(d,{when:fetched,ageMin:Math.max(0,ageMin),sourceLabel:(d.source||"adsb.fi v3")+" · cached feed (aircraft.json)",short:"cached feed",modeLabel:"Cached feed — tried first ✓",modeClass:ageMin>=5?"warn":"good"}); }).catch(function(err){
     if(my!==gen.planes)return;
     var why=(err&&err.stale)?((err.unparseable)?"the cached feed's time stamp couldn't be read, so it is treated as stale and its planes are NOT shown as live":("the cached feed is "+Math.round(err.ageMin)+" minutes old (over the 10-minute limit), so its planes are NOT shown as live")):"the cached feed didn't answer";
-    if(st)st.textContent="Planes: "+why+" — trying backup relays now (8 seconds at most)…";
+    if(st)st.textContent="Planes: "+why+" — trying backup relays now (10 seconds at most)…";
     setFeedMeta("adsb.fi — backup relays","Feed time: —","Cached feed unavailable — trying backups","warn");
     var ps=$("homePlaneSub"); if(ps)ps.textContent="Planes: cached feed unavailable — trying backups…";
     /* 2) relays as backup only, hard-capped */
