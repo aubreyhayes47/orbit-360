@@ -163,7 +163,7 @@ button{ font-family:inherit; } :focus-visible{ outline:3px solid var(--gold); ou
       <span id="freshIss">🛰 Station: waiting…</span>
       <span id="freshWx">🌦 Weather: waiting…</span>
     </div>
-    <p class="small" style="margin-top:10px">How to check: read the gold NEAREST line above the chart — it gives the nearest plane's real distance and direction, live from the feed. Note that direction, step outside, face that way and look up. If the time above is more than a few minutes old, tap REFRESH — planes move about 8 miles a minute at cruising speed, slower near the airport.</p>
+    <p class="small" style="margin-top:10px">How to check: read the gold NEAREST line just under the chart above — it quotes the nearest plane's own LOOK line word for word, live from the feed, in the same words the Local Sky list uses. Follow that line exactly: step outside, face the way it says, and look up. If the time above is more than a few minutes old, tap REFRESH — planes move about 8 miles a minute at cruising speed, slower near the airport.</p>
     <div class="btnrow"><button class="bigbtn gold" type="button" id="homeRefresh">⟳&nbsp; REFRESH EVERYTHING</button><button class="bigbtn blue" type="button" data-goto="local">SEE EACH PLANE →</button></div>
   </div>
 
@@ -314,7 +314,7 @@ button{ font-family:inherit; } :focus-visible{ outline:3px solid var(--gold); ou
     <p>5. LIVE means measured just now. CALCULATED means worked out from a known path.</p></div>
   <div class="card"><h3>Put Orbit on the Home Screen</h3><p>On an iPhone: open this page in Safari, tap Share (square with an up arrow), then Add to Home Screen. Orbit then opens full-screen from its own icon, like an app — no account or login, ever.</p><p>On Android: open in Chrome, tap ⋮, then Add to Home screen.</p></div>
   <div class="card"><h3>About the information</h3><p>Space facts checked against NASA/JPL, November 7, 2026. Weather live from the National Weather Service. Station position live from orbital data. Airplane positions live from adsb.fi's open feed, read first from a cached copy on this same site (aircraft.json) because the feed does not answer browsers directly — that cached-feed pattern is what most small personal trackers use. Orbit shows the feed's name, its time, and how old it is on every report, and never shows an old report as live. Weather is from the National Weather Service first, with Open-Meteo as a labelled backup. No location is tracked — Local Sky always looks at Bartlett.</p></div>
-  <p class="small" style="margin-top:14px">ORBIT 360 v19</p>
+  <p class="small" style="margin-top:14px">ORBIT 360 v20</p>
 </section>
 
 <div class="footer"><div class="rule"></div>ORBIT 360 — made with care for two very good grandparents.<br/>Open it, see what's overhead, look up.</div>
@@ -361,6 +361,14 @@ function fetchTimeout(url,ms,opts){ var c=("AbortController" in window)?new Abor
 function fmtClock(d){ return d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",timeZone:"America/Chicago"}); }
 function fmtAgo(d){ var s=Math.max(0,Math.round((Date.now()-d.getTime())/1000)); if(s<45)return "just now"; var m=Math.round(s/60); if(m<60)return m+" minute"+(m===1?"":"s")+" ago"; var h=Math.floor(m/60); return h+" hr "+(m%60)+" min ago"; }
 function fmtMi(d){ var s=(+d).toFixed(1); return s+" "+(s==="1.0"?"mile":"miles"); }
+/* THE LOOK line — the one sentence every "go outside and check" surface quotes.
+   It is built HERE and nowhere else: the Local Sky list, the verify box at the top
+   of that page, the Home NEAREST caption and the tap-a-plane card all build it from
+   this one function on the same stored a._mi / a._dir / a._brg, so the distance,
+   the direction word, the "face" wording and the bearing can never drift apart
+   into paraphrases (in v19 the Home caption said "look southwest" where the list
+   said "face southwest", and put the bearing ahead of the direction). */
+function lookLineText(a){ return "LOOK: "+fmtMi(a._mi)+" "+a._dir+" — face "+a._dir+" · bearing "+Math.round(a._brg)+"°"; }
 function fmtClockS(d){ return d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",second:"2-digit",timeZone:"America/Chicago"}); }
 function setFresh(id,txt){ var e=$(id); if(e)e.textContent=txt; }
 function regionName(lat,lon){
@@ -996,7 +1004,7 @@ function renderPlanes(ac,when){
   lastPlanes=ac; var shown=ac.slice(0,15); lastShown=shown;
   var sc=$("skyChart"); if(sc)sc.innerHTML=skyChartSVG(shown,skyRadiusMi,null);
   var hc=$("homeSkyChart"); if(hc)hc.innerHTML=skyChartSVG(ac.slice(0,25),skyRadiusMi,null);
-  var nc=$("nearestCap"); if(nc){ if(ac.length){ var na=ac[0]; ac.forEach(function(a){ if(a._mi<na._mi)na=a; }); nc.textContent="NEAREST: "+(((na.flight||"").trim())||"Private flight")+" — "+fmtMi(na._mi)+" "+na._dir+" — bearing "+Math.round(na._brg)+"° — look "+na._dir+"."; } else nc.textContent="Nearest plane: none broadcasting within "+skyRadiusMi+" miles right now."; }
+  var nc=$("nearestCap"); if(nc){ if(ac.length){ var na=ac[0]; ac.forEach(function(a){ if(a._mi<na._mi)na=a; }); nc.textContent="NEAREST: "+(((na.flight||"").trim())||"Private flight")+" — "+lookLineText(na); } else nc.textContent="Nearest plane: none broadcasting within "+skyRadiusMi+" miles right now."; }
   var pc=$("homePlaneCount"); if(pc)pc.textContent=ac.length;
   var ps=$("homePlaneSub"); if(ps)ps.textContent="within "+skyRadiusMi+" miles · feed "+fmtClock(when);
   state.planes=ac.length; updateBriefing();
@@ -1024,13 +1032,13 @@ function skySuccess(d,meta){
   var ageNote=meta.ageMin>=5?" Feed is "+Math.round(meta.ageMin)+" minutes old — planes move about 30 miles in 5 minutes at cruising speed, so positions have shifted since this snapshot.":"";
   if(st)st.textContent=inRange+" planes within "+skyRadiusMi+" miles of Bartlett — showing the "+shown.length+" nearest and most interesting. The feed listed "+feedTotal+" aircraft in total."+ageNote;
   $("skyList").innerHTML=shown.map(function(a,i){ var call=(a.flight||"").trim()||"Private flight"; var alt=a.alt_baro==="ground"||a.alt_baro===0?"On the ground":(a.alt_baro?Number(a.alt_baro).toLocaleString("en-US")+" feet":"Altitude not reported"); var spd=a.gs?Math.round(a.gs*1.15078)+" mph":"—"; var hdg=(a.track!=null&&!isNaN(a.track))?Math.round(a.track)+"° "+compass(a.track):"—"; var reg=a.r?" · Registration "+esc(a.r):""; var star=a._rare?'<span class="pill calc">★ WORTH A LOOK</span>':'<span class="pill live">LIVE FEED</span>';
-    return '<div class="card sky-list-card'+(a._rare?" rare":"")+'"><div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><span class="call">'+(i+1)+'. '+esc(call)+'</span>'+star+'</div><p style="margin-top:4px"><b style="color:#fff">'+esc(typeNameOf(a))+reg+'</b></p><div class="lookline">👀 LOOK: '+fmtMi(a._mi)+' '+a._dir+' — face '+a._dir+' · bearing '+Math.round(a._brg)+'°</div><div class="facts"><div class="fact"><span class="fl">Distance</span><span class="fv">'+fmtMi(a._mi)+'</span></div><div class="fact"><span class="fl">Height</span><span class="fv">'+alt+'</span></div><div class="fact"><span class="fl">Speed</span><span class="fv">'+spd+'</span></div><div class="fact"><span class="fl">Flying toward</span><span class="fv">'+hdg+'</span></div></div></div>'; }).join("");
+    return '<div class="card sky-list-card'+(a._rare?" rare":"")+'"><div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><span class="call">'+(i+1)+'. '+esc(call)+'</span>'+star+'</div><p style="margin-top:4px"><b style="color:#fff">'+esc(typeNameOf(a))+reg+'</b></p><div class="lookline">👀 '+lookLineText(a)+'</div><div class="facts"><div class="fact"><span class="fl">Distance</span><span class="fv">'+fmtMi(a._mi)+'</span></div><div class="fact"><span class="fl">Height</span><span class="fv">'+alt+'</span></div><div class="fact"><span class="fl">Speed</span><span class="fv">'+spd+'</span></div><div class="fact"><span class="fl">Flying toward</span><span class="fv">'+hdg+'</span></div></div></div>'; }).join("");
   /* the verify box at the top of this page copies plane #1's LOOK line from these SAME
      stored values (shown[0]._mi / _dir / _brg — the exact values the list line below it
      just printed), so its distance AND its direction are always the live plane's own.
      (v12 printed a fixed example distance-and-direction there whose direction never
      updated, so it could send the reader looking the wrong way.) */
-  var vl=$("verifyLookLine"); if(vl&&shown.length)vl.textContent="Right now plane #1's line reads: “LOOK: "+fmtMi(shown[0]._mi)+" "+shown[0]._dir+" — face "+shown[0]._dir+" · bearing "+Math.round(shown[0]._brg)+"°” — copied live from the list below, not an example.";
+  var vl=$("verifyLookLine"); if(vl&&shown.length)vl.textContent="Right now plane #1's line reads: “"+lookLineText(shown[0])+"” — copied live from the list below, not an example.";
   var speak="Local sky report for Bartlett, from "+meta.sourceLabel+" at "+fmtClock(when)+". There are "+inRange+" aircraft within "+skyRadiusMi+" miles of Bartlett (the feed listed "+feedTotal+" in total). ";
   shown.slice(0,3).forEach(function(a,i){ speak+=(i===0?"Nearest and most notable: ":"Also nearby: ")+((a.flight||"").trim()||"a private flight")+", a "+typeNameOf(a)+", "+fmtMi(a._mi)+" "+a._dir+" of Bartlett"+(a.alt_baro&&a.alt_baro!=="ground"?", at "+Number(a.alt_baro).toLocaleString("en-US")+" feet":"")+". "; });
   speak+="Some aircraft — especially military and privacy-blocked ones — never appear on this feed.";
@@ -1173,7 +1181,7 @@ document.addEventListener("click",function(e){
   var g=e.target.closest(".planetap");
   if(!g)return;
   var sec=g.closest("section"); var slot=sec?sec.querySelector(".plane-detail-slot"):null; if(!slot)return;
-  slot.innerHTML='<div class="card" style="border-color:rgba(238,194,94,.6)"><h3>✈ '+esc(g.getAttribute("data-call"))+'</h3><p><b style="color:#fff">'+esc(g.getAttribute("data-type"))+'</b></p><div class="lookline">👀 LOOK: '+esc(g.getAttribute("data-dist"))+' miles '+esc(g.getAttribute("data-compass"))+' — face '+esc(g.getAttribute("data-compass"))+' · bearing '+esc(g.getAttribute("data-brg"))+'°</div><div class="facts"><div class="fact"><span class="fl">Height</span><span class="fv">'+esc(g.getAttribute("data-alt"))+'</span></div><div class="fact"><span class="fl">Speed</span><span class="fv">'+esc(g.getAttribute("data-spd"))+'</span></div></div><button class="bigbtn blue pd-back" type="button">←&nbsp; BACK TO THE CHART</button></div>';
+  slot.innerHTML='<div class="card" style="border-color:rgba(238,194,94,.6)"><h3>✈ '+esc(g.getAttribute("data-call"))+'</h3><p><b style="color:#fff">'+esc(g.getAttribute("data-type"))+'</b></p><div class="lookline">👀 LOOK: '+esc(fmtMi(parseFloat(g.getAttribute("data-dist"))))+' '+esc(g.getAttribute("data-compass"))+' — face '+esc(g.getAttribute("data-compass"))+' · bearing '+esc(g.getAttribute("data-brg"))+'°</div><div class="facts"><div class="fact"><span class="fl">Height</span><span class="fv">'+esc(g.getAttribute("data-alt"))+'</span></div><div class="fact"><span class="fl">Speed</span><span class="fv">'+esc(g.getAttribute("data-spd"))+'</span></div></div><button class="bigbtn blue pd-back" type="button">←&nbsp; BACK TO THE CHART</button></div>';
   slot.scrollIntoView({block:"nearest",behavior:REDUCED?"auto":"smooth"});
 });
 /* ===== text size — persisted on the website copy (guarded localStorage; see saveSettings).
