@@ -313,7 +313,7 @@ button{ font-family:inherit; } :focus-visible{ outline:3px solid var(--gold); ou
     <p>5. LIVE means measured just now. CALCULATED means worked out from a known path.</p></div>
   <div class="card"><h3>Put Orbit on the Home Screen</h3><p>On an iPhone: open this page in Safari, tap Share (square with an up arrow), then Add to Home Screen. Orbit then opens full-screen from its own icon, like an app — no account or login, ever.</p><p>On Android: open in Chrome, tap ⋮, then Add to Home screen.</p></div>
   <div class="card"><h3>About the information</h3><p>Space facts checked against NASA/JPL, November 7, 2026. Weather live from the National Weather Service. Station position live from orbital data. Airplane positions live from adsb.fi's open feed, read first from a cached copy on this same site (aircraft.json) because the feed does not answer browsers directly — that cached-feed pattern is what most small personal trackers use. Orbit shows the feed's name, its time, and how old it is on every report, and never shows an old report as live. Weather is from the National Weather Service first, with Open-Meteo as a labelled backup. No location is tracked — Local Sky always looks at Bartlett.</p></div>
-  <p class="small" style="margin-top:14px">ORBIT 360 v15</p>
+  <p class="small" style="margin-top:14px">ORBIT 360 v16</p>
 </section>
 
 <div class="footer"><div class="rule"></div>ORBIT 360 — made with care for two very good grandparents.<br/>Open it, see what's overhead, look up.</div>
@@ -429,7 +429,8 @@ document.addEventListener("click",function(e){
 var loaded={};
 function showView(name){ stopSpeech(); document.querySelectorAll(".view").forEach(function(v){v.classList.remove("active");}); var el=$("view-"+name); if(el)el.classList.add("active"); $("homeBtn").classList.toggle("show",name!=="home"); window.scrollTo(0,0);
   if(el){ var hd=el.querySelector("h1,h2,h3"); if(hd){ hd.setAttribute("tabindex","-1"); try{ hd.focus({preventScroll:true}); }catch(e){ try{hd.focus();}catch(e2){} } } }
-  if(name==="local"&&!loaded.local){loaded.local=true;fetchSky();}
+  if(name==="local"){loaded.local=true; if(typeof fetchSkyIfStale==="function")fetchSkyIfStale();}
+  if(name==="home"&&typeof fetchSkyIfStale==="function")fetchSkyIfStale();
   if(name==="sats"&&!loaded.sats){loaded.sats=true;fetchISS();}
   if(name==="weather"&&!loaded.weather){loaded.weather=true;fetchWeather();} }
 $("homeBtn").addEventListener("click",function(){showView("home");});
@@ -455,13 +456,46 @@ function skyChartSVG(planes,radiusMi,highlight){
      can sit anywhere on the chart, including exactly on top of a label; labels
      emitted last paint over the markers instead of being hidden under them (v13:
      a plane arrow on the outer ring covered the "2" of "25 mi", leaving "5 mi").
-     (A stroke halo was tried and dropped: a renderer that ignores paint-order
-     paints the stroke over the letter fill and darkens every label — drawn last
-     with their normal opaque fill, the labels are always fully visible.) */
+     v16: drawing the bare letters last was NOT enough — a label's own whitespace
+     stayed transparent, so a plane arrow parked on the "25 mi" label still showed
+     through the gap between "25" and "mi". Every label below is therefore drawn
+     as an OPAQUE CHIP: a solid dark rounded rect covering the label's whole box,
+     letters and spaces alike, with the text on top of it. Whatever sits under a
+     label — arrow, dot, trail or ring line — is hidden by the chip, and the
+     chip's padding keeps it clear of the letter shapes themselves. */
+  function chip(x,y,txt,fpx,anchor,fill){
+    var w=Math.ceil(txt.length*fpx*0.64)+18, h=fpx+11;
+    var x0=anchor==="middle"?Math.round(x-w/2):x-9;
+    var y0=Math.round(y-fpx-4);
+    if(x0<1)x0=1; if(x0+w>S-1)x0=S-1-w; if(y0<1)y0=1; if(y0+h>S-1)y0=S-1-h;
+    return '<rect x="'+x0+'" y="'+y0+'" width="'+w+'" height="'+h+'" rx="6" fill="#081a33" stroke="rgba(150,190,240,.4)" stroke-width="1"/><text x="'+x+'" y="'+y+'" fill="'+fill+'" font-size="'+fpx+'" font-weight="700"'+(anchor==="middle"?' text-anchor="middle"':"")+'>'+txt+'</text>';
+  }
   var labels="";
-  rings.forEach(function(rm){ var f=rm/radiusMi; out+='<circle cx="'+C+'" cy="'+C+'" r="'+(R*f)+'" fill="none" stroke="rgba(150,190,240,.3)"/>'; labels+='<text x="'+(C+5)+'" y="'+(C-R*f+fs(24))+'" fill="#a8d4f5" font-size="'+fs(13)+'" font-weight="700">'+rm+' mi</text>'; });
-  labels+='<text x="'+C+'" y="'+fs(19)+'" fill="#eec25e" font-size="'+fs(19)+'" font-weight="700" text-anchor="middle">N</text>';
-  labels+='<text x="'+C+'" y="'+(S-4)+'" fill="#dceeff" font-size="'+fs(15)+'" font-weight="700" text-anchor="middle">S</text><text x="8" y="'+(C+5)+'" fill="#dceeff" font-size="'+fs(15)+'" font-weight="700">W</text><text x="'+(S-22)+'" y="'+(C+5)+'" fill="#dceeff" font-size="'+fs(15)+'" font-weight="700">E</text>';
+  var smallRings=rings.filter(function(rm){ return R*(rm/radiusMi)<62; });
+  var smallSeen=0;
+  rings.forEach(function(rm){ var f=rm/radiusMi, rf=R*f; out+='<circle cx="'+C+'" cy="'+C+'" r="'+rf+'" fill="none" stroke="rgba(150,190,240,.3)"/>';
+    if(rf>=62){
+      labels+=chip(C+5,C-rf+fs(24),rm+" mi",fs(13),"start","#a8d4f5");
+    } else {
+      /* a small ring's label cannot sit at the top of its ring: that spot lands
+         within a few pixels of the home star at the centre (in the 25-mile view
+         the "8 mi" label sat there with the star's top point touching the "8";
+         in the 50/100-mile views the smallest labels landed right on the star).
+         Small-ring labels move to the east side instead, their chips starting a
+         clear gap east of the star's disc; with two small rings they stack below
+         the centre line so they clear each other and the larger rings' labels. */
+      var baseY=smallRings.length>1?(smallSeen===0?C+16:C+50):C+5;
+      smallSeen++;
+      labels+=chip(C+39,baseY,rm+" mi",fs(13),"start","#a8d4f5");
+    } });
+  labels+=chip(C,fs(19),"N",fs(19),"middle","#eec25e");
+  labels+=chip(C,S-8,"S",fs(15),"middle","#dceeff");
+  labels+=chip(8,C+5,"W",fs(15),"start","#dceeff");
+  labels+=chip(S-22,C+5,"E",fs(15),"start","#dceeff");
+  /* the home star sits on its own opaque disc, drawn last of all: no marker or
+     ring line can show through the star's open points, and the disc's edge is
+     the clearance zone every other label keeps away from */
+  labels+='<circle cx="'+C+'" cy="'+C+'" r="17" fill="#081a33" stroke="rgba(238,194,94,.5)" stroke-width="1"/>';
   labels+='<text x="'+C+'" y="'+(C+8)+'" fill="#eec25e" font-size="'+fs(24)+'" text-anchor="middle">★</text>';
   planes.forEach(function(a,i){ var brg=(a._brg!=null?a._brg:bearing(HOME.lat,HOME.lon,a.lat,a.lon)); var br=brg*Math.PI/180; var fr=Math.min(1,(a._mi||0)/radiusMi); var x=C+Math.sin(br)*R*fr, y=C-Math.cos(br)*R*fr; var hl=(highlight!=null&&i===highlight);
     /* the dot is placed from the SAME stored values as every label — a._brg and a._mi,
@@ -482,7 +516,7 @@ function skyChartSVG(planes,radiusMi,highlight){
     else { out+='<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="'+(hl?9:6.5)+'" fill="'+col+'" stroke="#071426" stroke-width="2"><title>'+esc((a.flight||"Plane")+" — "+fmtMi(lblMi)+" "+lblDir)+'</title></circle>'; }
     out+='</g>'; });
   out+=labels;
-  if(!planes.length) out+='<text x="'+C+'" y="'+(C+38)+'" fill="#dceeff" font-size="'+fs(14)+'" text-anchor="middle">No planes to plot right now</text>';
+  if(!planes.length) out+='<text x="'+C+'" y="'+(C+80)+'" fill="#dceeff" font-size="'+fs(14)+'" text-anchor="middle">No planes to plot right now</text>';
   out+="</svg>"; return out;
 }
 function sunPoint(){ var now=new Date(); var start=Date.UTC(now.getUTCFullYear(),0,0); var doy=Math.floor((now.getTime()-start)/864e5); var decl=-23.44*Math.cos((360/365)*(doy+10)*Math.PI/180); var utcH=now.getUTCHours()+now.getUTCMinutes()/60; var lon=180-utcH*15; if(lon>180)lon-=360; return {lat:decl,lon:lon}; }
@@ -606,6 +640,11 @@ function setTrack(k,v){ track[k]=v; updateHomeStatus(); }
 setInterval(function(){
   ["planes","iss","wx"].forEach(function(k){
     if(track[k]!=="wait")return;
+    /* planes get their full fetch window: fetchSky resolves or fails on its own
+       8-second deadline, so the watchdog must not declare failure mid-flight —
+       doing so stamped "didn't answer" over the Home count and caption while the
+       same fetch was still legitimately on its way to updating both views */
+    if(k==="planes"&&typeof skyLastFetchAt!=="undefined"&&skyLastFetchAt&&Date.now()-skyLastFetchAt<9500)return;
     if(k==="planes"){ var pc=$("homePlaneCount"); if(pc)pc.textContent="—"; var ps=$("homePlaneSub"); if(ps)ps.textContent="Planes: the live feed didn't answer — tap REFRESH to try again"; var nc=$("nearestCap"); if(nc)nc.textContent="Nearest plane: the feed didn't answer — tap REFRESH EVERYTHING to try again."; setFresh("freshPlanes","✈ Planes: didn't answer — tap REFRESH"); }
     if(k==="iss"){ var hs2=$("homeIssSub"); if(hs2)hs2.textContent="Station: the live feed didn't answer — tap REFRESH to try again"; setFresh("freshIss","🛰 Station: didn't answer — tap REFRESH"); }
     if(k==="wx"){ setFresh("freshWx","🌦 Weather: didn't answer — tap REFRESH"); var hl=$("homeWxLine"); if(hl&&/Getting/.test(hl.textContent))hl.textContent="Weather: the forecast feeds didn't answer — tap REFRESH EVERYTHING to try again."; }
@@ -887,6 +926,12 @@ var rr=$("refreshRadar"); if(rr)rr.addEventListener("click",function(){ var img=
    only allows its own origin, airplanes.live returns 403, and public relays share cloud IPs
    that get 429s — the pattern personal trackers use instead is a scheduled same-origin cache. */
 var skyRadiusMi=25, lastPlanes=[], lastShown=[], lastFeedMeta=null;
+/* ONE shared sky state and fetch sequence for Home and Local Sky (v16): both views
+   render from these same variables through the same renderPlanes, and every fetch —
+   the boot fetch, the 90-second poll, a REFRESH tap, a view change, the page becoming
+   visible again — goes through the single fetchSky below, which stamps both times. */
+var skyLastFetchAt=0; /* when the shared fetch last STARTED */
+var skyLastOkAt=0;    /* when a snapshot last LANDED (either view shows exactly this one) */
 document.querySelectorAll("#radiusSeg button").forEach(function(b){ b.addEventListener("click",function(){ document.querySelectorAll("#radiusSeg button").forEach(function(x){x.classList.remove("sel");}); b.classList.add("sel"); skyRadiusMi=parseInt(b.getAttribute("data-mi"),10); if(typeof syncSegPressed==="function")syncSegPressed(); fetchSky(); }); });
 $("refreshSky").addEventListener("click",function(){ fetchSky(); });
 function prettyDesc(s){if(!s)return"";return s.toLowerCase().replace(/\b([a-z])/g,function(m,c){return c.toUpperCase();});}
@@ -914,6 +959,7 @@ function renderPlanes(ac,when){
   return shown;
 }
 function skySuccess(d,meta){
+  skyLastOkAt=Date.now();
   var raw=(d.ac||d.aircraft||[]).filter(function(a){return a.lat!=null&&a.lon!=null;});
   var feedTotal=raw.length; /* every aircraft the feed reported, near or far */
   var when=meta.when||new Date();
@@ -969,7 +1015,7 @@ function relayChain(){
   return Promise.race([p,new Promise(function(_,rej){ setTimeout(function(){rej(new Error("relay deadline"));},4500); })]);
 }
 function fetchSky(){
-  var my=++gen.planes; setTrack("planes","wait");
+  var my=++gen.planes; skyLastFetchAt=Date.now(); setTrack("planes","wait");
   /* absolute deadline: whatever the fetches do, Planes resolves — success or honest failure — within 8 seconds, cold load included */
   setTimeout(function(){ if(my===gen.planes&&track.planes==="wait") skyFail("Didn't answer within 8 seconds"); },8000);
   var dot=$("skyDot"),st=$("skyStatusText"); if(dot)dot.className="dot wait";
@@ -1004,6 +1050,19 @@ function fetchSky(){
       skySuccess(d,{when:when,ageMin:relayAge,sourceLabel:"adsb.fi via backup relay",short:"backup relay",modeLabel:"Backup relay (cached feed unavailable)",modeClass:"warn"});
     }).catch(function(){ if(my!==gen.planes)return; skyFail("Didn't answer — cache "+((err&&err.stale)?"was stale":"unavailable")+", relays timed out"); });
   });
+}
+/* the shared revalidation gate: Home and Local Sky both come through here whenever
+   they are shown, and the page comes through here whenever it becomes visible or
+   regains focus. If the snapshot on screen is a minute old or more — or none has
+   landed yet — the feed is re-fetched at once through the same fetchSky, so Home's
+   nearest-plane caption and count can never sit on an older snapshot than Local
+   Sky's while the 90-second poll is still counting down (v15: a tab left open on
+   Home kept an old snapshot until the reader navigated away and back). A fetch
+   already in flight is never doubled. */
+function fetchSkyIfStale(){
+  if(track.planes==="wait")return;
+  if(skyLastOkAt&&Date.now()-skyLastOkAt<60000)return;
+  fetchSky();
 }
 $("homeRefresh").addEventListener("click",function(){ /* always works, even mid-refresh: each fetch bumps its generation, so stale results are ignored and each tracker reports as it lands */
   fetchSky(); fetchISS(); fetchWeather();
@@ -1090,8 +1149,16 @@ fetchISS(); fetchWeather(); fetchSky();
 /* planes poll: re-fetch aircraft.json every 90 seconds while the page sits open, so the
    chart, the caption, the list and the counts all move with the planes instead of freezing
    at first load (the v9 page fetched once and never again). fetchSky bumps gen.planes on
-   every call, so a slow or out-of-order reply can never overwrite a newer one. */
+   every call, so a slow or out-of-order reply can never overwrite a newer one. Home and
+   Local Sky share this one sequence — renderPlanes paints both views from the same
+   snapshot — and the poll is backed up by the revalidation gate above: timers pause
+   while a phone is locked or a tab is in the background, so when the page becomes
+   visible again (or regains focus, or the reader moves between Home and Local Sky)
+   fetchSkyIfStale re-fetches at once if the snapshot on screen is over a minute old,
+   instead of leaving Home showing the older snapshot until the poll happens to fire. */
 setInterval(fetchSky,90000);
+document.addEventListener("visibilitychange",function(){ if(!document.hidden)fetchSkyIfStale(); });
+window.addEventListener("focus",fetchSkyIfStale);
 /* station poll: every 60 seconds while Home or the Station view is showing — the Updated
    stamp is printed with seconds and the coordinates genuinely move on that cadence */
 setInterval(function(){ if($("view-home").classList.contains("active")||$("view-sats").classList.contains("active"))fetchISS(); },60000);
